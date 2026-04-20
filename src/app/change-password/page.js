@@ -6,9 +6,10 @@ import { useAuth } from '@/lib/auth';
 import { authAPI } from '@/lib/api';
 import toast from 'react-hot-toast';
 import { Eye, EyeOff, KeyRound, ShieldCheck } from 'lucide-react';
+import PasswordStrength, { MIN_PASSWORD_LENGTH } from '@/components/PasswordStrength';
 
 export default function ChangePasswordPage() {
-  const { user, refreshUser } = useAuth();
+  const { user, updateUser } = useAuth();
   const router = useRouter();
   const [form, setForm] = useState({ currentPassword: '', newPassword: '', confirmPassword: '' });
   const [showCurrent, setShowCurrent] = useState(false);
@@ -19,22 +20,35 @@ export default function ChangePasswordPage() {
 
   const handleChange = (field) => (e) => setForm((prev) => ({ ...prev, [field]: e.target.value }));
 
+  const passwordsMatch = form.confirmPassword.length > 0 && form.newPassword === form.confirmPassword;
+  const isSamePassword = form.newPassword.length > 0 && form.newPassword === form.currentPassword;
+  const canSubmit =
+    !saving &&
+    form.currentPassword.length > 0 &&
+    form.newPassword.length >= MIN_PASSWORD_LENGTH &&
+    passwordsMatch &&
+    !isSamePassword;
+
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (form.newPassword.length < MIN_PASSWORD_LENGTH) {
+      toast.error(`New password must be at least ${MIN_PASSWORD_LENGTH} characters.`);
+      return;
+    }
     if (form.newPassword !== form.confirmPassword) {
       toast.error('New passwords do not match.');
       return;
     }
-    if (form.newPassword.length < 6) {
-      toast.error('New password must be at least 6 characters.');
+    if (isSamePassword) {
+      toast.error('New password must be different from your current password.');
       return;
     }
 
     setSaving(true);
     try {
-      await authAPI.changePassword(form.currentPassword, form.newPassword);
+      const { data } = await authAPI.changePassword(form.currentPassword, form.newPassword);
+      updateUser(data.user, data.token);
       toast.success('Password changed successfully.');
-      await refreshUser();
       router.replace('/dashboard');
     } catch (err) {
       toast.error(err.response?.data?.message || 'Failed to change password.');
@@ -96,9 +110,9 @@ export default function ChangePasswordPage() {
                   value={form.newPassword}
                   onChange={handleChange('newPassword')}
                   className="input-field pr-11"
-                  placeholder="Minimum 6 characters"
+                  placeholder={`Minimum ${MIN_PASSWORD_LENGTH} characters`}
                   required
-                  minLength={6}
+                  minLength={MIN_PASSWORD_LENGTH}
                   autoComplete="new-password"
                 />
                 <button
@@ -109,6 +123,10 @@ export default function ChangePasswordPage() {
                   {showNew ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                 </button>
               </div>
+              <PasswordStrength password={form.newPassword} variant="light" />
+              {isSamePassword && (
+                <p className="mt-1 text-xs text-red-500">New password must differ from your current password.</p>
+              )}
             </div>
 
             <div>
@@ -119,14 +137,17 @@ export default function ChangePasswordPage() {
                 type="password"
                 value={form.confirmPassword}
                 onChange={handleChange('confirmPassword')}
-                className="input-field"
+                className={`input-field ${form.confirmPassword && !passwordsMatch ? 'border-red-400 focus:border-red-500 focus:ring-red-200' : ''}`}
                 placeholder="Re-enter new password"
                 required
                 autoComplete="new-password"
               />
+              {form.confirmPassword && !passwordsMatch && (
+                <p className="mt-1 text-xs text-red-500">Passwords do not match.</p>
+              )}
             </div>
 
-            <button type="submit" disabled={saving} className="btn-primary w-full">
+            <button type="submit" disabled={!canSubmit} className="btn-primary w-full">
               {saving ? 'Saving...' : 'Change Password'}
             </button>
 

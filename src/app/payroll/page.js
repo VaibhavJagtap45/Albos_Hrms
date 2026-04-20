@@ -20,15 +20,18 @@ import {
 // ── Reusable UI Components ────────────────────────────────────────────────────
 function GradientStatCard({ icon: Icon, label, value, subtext, gradient }) {
   return (
-    <div className={`relative overflow-hidden rounded-2xl bg-gradient-to-br ${gradient} p-5 text-white purple-glow`}>
-      <div className="pointer-events-none absolute -right-4 -top-4 h-24 w-24 rounded-full bg-white/10" />
-      <div className="relative z-10">
-        <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-2xl bg-white/20 backdrop-blur-sm">
+    <div className={`relative overflow-hidden rounded-[30px] bg-gradient-to-br ${gradient} p-5 text-white shadow-[0_22px_50px_rgba(76,29,149,0.22)]`}>
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(255,255,255,0.24),transparent_30%)]" />
+      <div className="pointer-events-none absolute -bottom-10 right-0 h-28 w-28 rounded-full bg-white/10 blur-2xl" />
+      <div className="relative z-10 flex items-start justify-between gap-4">
+        <div>
+          <p className="text-[11px] font-semibold uppercase tracking-[0.32em] text-white/70">{label}</p>
+          <p className="mt-3 font-display text-3xl font-bold text-white">{value}</p>
+          {subtext && <p className="mt-1 text-sm text-white/70">{subtext}</p>}
+        </div>
+        <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-white/15 bg-white/12 backdrop-blur-sm">
           <Icon className="h-5 w-5 text-white" />
         </div>
-        <p className="font-display text-3xl font-bold text-white">{value}</p>
-        <p className="mt-1 text-sm font-medium text-white/90">{label}</p>
-        {subtext && <p className="mt-0.5 text-xs text-white/60">{subtext}</p>}
       </div>
     </div>
   );
@@ -36,16 +39,125 @@ function GradientStatCard({ icon: Icon, label, value, subtext, gradient }) {
 
 function ModalHeader({ title, description, onClose, gradient = "from-violet-600 to-purple-700" }) {
   return (
-    <div className={`relative overflow-hidden rounded-t-[28px] bg-gradient-to-br ${gradient} px-6 py-5`}>
-      <div className="pointer-events-none absolute -right-6 -top-6 h-24 w-24 rounded-full bg-white/10" />
+    <div className={`relative overflow-hidden rounded-t-[30px] bg-gradient-to-br ${gradient} px-6 py-5`}>
+      <div className="pointer-events-none absolute -right-8 -top-6 h-28 w-28 rounded-full bg-white/10 blur-xl" />
       <div className="relative z-10 flex items-start justify-between gap-4">
         <div>
           <h3 className="font-display text-xl font-bold text-white">{title}</h3>
-          {description && <p className="mt-1 text-sm text-white/70">{description}</p>}
+          {description && <p className="mt-1 text-sm text-white/72">{description}</p>}
         </div>
-        <button type="button" onClick={onClose} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white/15 text-white transition hover:bg-white/25">
+        <button type="button" onClick={onClose} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border border-white/10 bg-white/14 text-white transition hover:bg-white/22">
           <X className="h-4 w-4" />
         </button>
+      </div>
+    </div>
+  );
+}
+
+function PageHero({ icon: Icon, eyebrow, title, description, action, stats }) {
+  return (
+    <div className="relative overflow-hidden rounded-[36px] bg-gradient-to-br from-[#23103f] via-[#5b21b6] to-[#312e81] px-6 py-7 text-white shadow-[0_34px_90px_rgba(76,29,149,0.26)] sm:px-8 sm:py-8">
+      <div className="pointer-events-none absolute inset-0">
+        <div className="absolute -right-12 top-0 h-60 w-60 rounded-full bg-white/10 blur-3xl" />
+        <div className="absolute left-8 top-12 h-32 w-32 rounded-full bg-fuchsia-300/10 blur-3xl" />
+        <div className="absolute bottom-0 left-1/3 h-20 w-20 rounded-full bg-white/10 blur-2xl" />
+      </div>
+
+      <div className="relative grid gap-6 xl:grid-cols-[1.15fr_0.85fr] xl:items-end">
+        <div>
+          <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-white/12 bg-white/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.26em] text-white/75">
+            <Icon className="h-3.5 w-3.5" />
+            {eyebrow}
+          </div>
+          <h1 className="font-display text-3xl font-bold text-white sm:text-4xl">{title}</h1>
+          <p className="mt-3 max-w-2xl text-sm leading-6 text-white/75">{description}</p>
+          {action ? <div className="mt-5 flex flex-wrap gap-3">{action}</div> : null}
+        </div>
+
+        <div className="grid gap-3 sm:grid-cols-2">
+          {stats.map((stat) => (
+            <div key={stat.label} className="rounded-[24px] border border-white/12 bg-white/10 px-4 py-4 backdrop-blur-sm">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.28em] text-white/55">{stat.label}</p>
+              <p className="mt-2 text-xl font-bold text-white">{stat.value}</p>
+              {stat.hint ? <p className="mt-1 text-xs text-white/65">{stat.hint}</p> : null}
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function PeriodNavigator({ monthState, setMonthState, title, description, rightSlot }) {
+  return (
+    <div className="glass-card overflow-hidden">
+      <div className="flex flex-col gap-4 border-b border-purple-100/80 bg-gradient-to-r from-white/80 via-purple-50/70 to-white px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <p className="text-[11px] font-semibold uppercase tracking-[0.32em] text-purple-600">{title}</p>
+          {description ? <p className="mt-1 text-sm text-surface-400">{description}</p> : null}
+        </div>
+        {rightSlot}
+      </div>
+
+      <div className="flex flex-wrap items-center gap-3 p-5">
+        <button
+          type="button"
+          onClick={() => setMonthState((cur) => shiftMonth(cur, -1))}
+          className="inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-purple-200 bg-white text-purple-600 transition hover:bg-purple-50"
+        >
+          <ChevronLeft className="h-4 w-4" />
+        </button>
+
+        <div className="rounded-[22px] border border-purple-100 bg-gradient-to-r from-violet-50 to-purple-50 px-4 py-3 text-sm font-bold text-purple-700">
+          {getMonthLabel(monthState.year, monthState.month)}
+        </div>
+
+        <button
+          type="button"
+          onClick={() => setMonthState((cur) => shiftMonth(cur, 1))}
+          className="inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-purple-200 bg-white text-purple-600 transition hover:bg-purple-50"
+        >
+          <ChevronRight className="h-4 w-4" />
+        </button>
+
+        <select
+          value={monthState.month}
+          onChange={(e) => setMonthState((cur) => ({ ...cur, month: Number(e.target.value) }))}
+          className="input-field min-w-[150px]"
+        >
+          {getMonthOptions().map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+        </select>
+
+        <select
+          value={monthState.year}
+          onChange={(e) => setMonthState((cur) => ({ ...cur, year: Number(e.target.value) }))}
+          className="input-field min-w-[130px]"
+        >
+          {getYearOptions(3).map((y) => <option key={y} value={y}>{y}</option>)}
+        </select>
+      </div>
+    </div>
+  );
+}
+
+function StepPanel({ step, title, description, action, children }) {
+  return (
+    <div className="glass-card-purple relative overflow-hidden p-5">
+      <div className="pointer-events-none absolute right-0 top-0 h-24 w-24 rounded-full bg-purple-200/30 blur-2xl" />
+      <div className="relative">
+        <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div className="flex items-start gap-3">
+            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-br from-violet-600 to-purple-700 text-xs font-bold text-white shadow-[0_12px_24px_rgba(109,40,217,0.2)]">
+              {step}
+            </div>
+            <div>
+              <h3 className="font-display text-lg font-bold text-slate-900">{title}</h3>
+              {description ? <p className="mt-1 text-sm text-surface-400">{description}</p> : null}
+            </div>
+          </div>
+          {action}
+        </div>
+        {children}
       </div>
     </div>
   );
@@ -89,6 +201,19 @@ function EditModal({ salary, onClose, onDone }) {
     otherDeductions: salary.otherDeductions ?? 0,
   });
   const [saving, setSaving] = useState(false);
+  const formId = 'edit-payroll-form';
+
+  // ESC closes; lock body scroll while modal is open (single effect, single cleanup)
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === 'Escape' && !saving) onClose(); };
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    window.addEventListener('keydown', onKey);
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      document.body.style.overflow = prevOverflow;
+    };
+  }, [onClose, saving]);
 
   const breakdown = calcSalaryBreakdown(salary);
 
@@ -130,17 +255,32 @@ function EditModal({ salary, onClose, onDone }) {
 
   const emp = salary.employeeId || {};
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-4 backdrop-blur-sm">
-      <div className="w-full max-w-lg rounded-[28px] bg-white shadow-2xl overflow-hidden">
-        <ModalHeader
-          title="Edit Payroll"
-          description={`${emp.name} · ${salary.month}/${salary.year}`}
-          onClose={onClose}
-          gradient="from-violet-600 to-purple-700"
-        />
+  // Backdrop click closes (but only when click originates on the backdrop itself)
+  const handleBackdropMouseDown = (e) => {
+    if (e.target === e.currentTarget && !saving) onClose();
+  };
 
-        <div className="p-6 space-y-4">
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-label="Edit payroll record"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-4 backdrop-blur-sm"
+      onMouseDown={handleBackdropMouseDown}
+    >
+      <div className="flex w-full max-w-lg max-h-[calc(100vh-2rem)] flex-col overflow-hidden rounded-[28px] bg-white shadow-2xl">
+        {/* Sticky header */}
+        <div className="shrink-0">
+          <ModalHeader
+            title="Edit Payroll"
+            description={`${emp.name} · ${salary.month}/${salary.year}`}
+            onClose={onClose}
+            gradient="from-violet-600 to-purple-700"
+          />
+        </div>
+
+        {/* Scrollable body */}
+        <div className="flex-1 space-y-4 overflow-y-auto overscroll-contain p-6">
           {/* Existing deduction summary */}
           <div className="grid grid-cols-2 gap-3 rounded-2xl bg-gradient-to-br from-purple-50/40 to-white border border-purple-100 p-4 text-sm">
             <div>
@@ -201,7 +341,7 @@ function EditModal({ salary, onClose, onDone }) {
             </div>
           </div>
 
-          <form onSubmit={handleSubmit} className="space-y-4">
+          <form id={formId} onSubmit={handleSubmit} className="space-y-4">
             <div className="grid grid-cols-2 gap-3">
               {[
                 { key: 'pf',  label: 'Provident Fund (PF)' },
@@ -239,20 +379,23 @@ function EditModal({ salary, onClose, onDone }) {
                 placeholder="0"
               />
             </div>
-
-            {/* Live net payable preview */}
-            <div className="flex items-center justify-between rounded-2xl bg-gradient-to-r from-violet-700 to-purple-800 px-4 py-3 text-white">
-              <span className="text-sm text-white/70">Calculated Net Payable</span>
-              <span className="text-lg font-bold">{formatCurrency(liveNet)}</span>
-            </div>
-
-            <div className="flex gap-3">
-              <button type="submit" disabled={saving} className="btn-primary flex-1">
-                {saving ? 'Saving...' : 'Save Changes'}
-              </button>
-              <button type="button" onClick={onClose} className="btn-secondary flex-1">Cancel</button>
-            </div>
           </form>
+        </div>
+
+        {/* Sticky footer — always reachable */}
+        <div className="shrink-0 border-t border-purple-100 bg-white">
+          <div className="flex items-center justify-between gap-4 px-6 py-3 bg-gradient-to-r from-violet-700 to-purple-800 text-white">
+            <span className="text-xs font-medium uppercase tracking-wider text-white/70">Net Payable</span>
+            <span className="font-display text-lg font-bold">{formatCurrency(liveNet)}</span>
+          </div>
+          <div className="flex gap-3 px-6 py-4">
+            <button type="submit" form={formId} disabled={saving} className="btn-primary flex-1">
+              {saving ? 'Saving...' : 'Save Changes'}
+            </button>
+            <button type="button" onClick={onClose} disabled={saving} className="btn-secondary flex-1">
+              Cancel
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -374,68 +517,52 @@ export default function PayrollPage() {
     }
   };
 
+  const currentPeriodLabel = getMonthLabel(monthState.year, monthState.month);
   const totalGross = salaries.reduce((sum, s) => sum + (s.grossSalary || 0), 0);
   const totalNet = salaries.reduce((sum, s) => sum + (s.netPayable || 0), 0);
   const totalFinalised = salaries.filter((s) => s.status === 'finalised').length;
+  const averageNet = salaries.length ? totalNet / salaries.length : 0;
+  const draftCount = salaries.filter((s) => s.status !== 'finalised').length;
+  const missingAttendanceEmployees = attCheck?.employees?.filter((employee) => !employee.hasData) || [];
 
   if (!isHR) {
     return (
       <AppShell>
-        <div className="mx-auto max-w-4xl space-y-6">
-          {/* Purple hero banner */}
-          <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-violet-700 via-purple-700 to-indigo-800 p-6 purple-glow-lg sm:p-8">
-            <div className="pointer-events-none absolute -right-12 -top-12 h-48 w-48 rounded-full bg-white/5" />
-            <div className="relative z-10 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <div className="mb-1 flex items-center gap-2">
-                  <ReceiptText className="h-4 w-4 text-purple-300" />
-                  <span className="text-sm font-medium text-purple-300">Payroll</span>
-                </div>
-                <h1 className="font-display text-2xl font-bold text-white sm:text-3xl">My Salary Slip</h1>
-                <p className="mt-1 text-sm text-purple-200">View your monthly salary slip once it has been published by HR.</p>
-              </div>
-            </div>
-          </div>
+        <div className="mx-auto max-w-5xl space-y-6">
+          <PageHero
+            icon={ReceiptText}
+            eyebrow="Payroll Workspace"
+            title="My Salary Slip"
+            description="Review the current payroll cycle, switch between previous months, and open the published salary slip once HR has released it."
+            stats={
+              mySalary
+                ? [
+                    { label: 'Net payable', value: formatCurrency(mySalary.netPayable), hint: 'Selected salary slip' },
+                    { label: 'Gross salary', value: formatCurrency(mySalary.grossSalary), hint: 'Before deductions' },
+                    { label: 'Status', value: (mySalary.status || 'draft').toUpperCase(), hint: 'HR publication state' },
+                    { label: 'Selected period', value: currentPeriodLabel, hint: 'Payroll preview window' },
+                  ]
+                : [
+                    { label: 'Selected period', value: currentPeriodLabel, hint: 'Payroll preview window' },
+                    { label: 'Slip status', value: 'PENDING', hint: 'Waiting for HR publish' },
+                    { label: 'Workspace', value: 'PAYROLL', hint: 'Personal salary history' },
+                    { label: 'Availability', value: myLoading ? 'LOADING' : 'CHECK BACK', hint: 'Published slips appear here' },
+                  ]
+            }
+          />
 
-          {/* Month navigation */}
-          <div className="glass-card overflow-hidden">
-            <div className="border-b border-purple-50 bg-gradient-to-r from-purple-50/60 to-white px-5 py-3">
-              <p className="text-xs font-semibold uppercase tracking-wider text-purple-600">Select Period</p>
-            </div>
-            <div className="flex flex-wrap items-center gap-3 p-4">
-              <button
-                type="button"
-                onClick={() => setMonthState((cur) => shiftMonth(cur, -1))}
-                className="inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-purple-200 text-purple-500 transition hover:bg-purple-50"
-              >
-                <ChevronLeft className="h-4 w-4" />
-              </button>
-              <div className="rounded-2xl bg-gradient-to-r from-violet-50 to-purple-50 border border-purple-100 px-4 py-3 text-sm font-bold text-purple-700">
-                {getMonthLabel(monthState.year, monthState.month)}
+          <PeriodNavigator
+            monthState={monthState}
+            setMonthState={setMonthState}
+            title="Select period"
+            description="Move across salary cycles without leaving the page."
+            rightSlot={
+              <div className="rounded-[22px] border border-purple-100 bg-white/80 px-4 py-3 text-right shadow-sm">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.28em] text-purple-500">Previewing</p>
+                <p className="mt-1 text-sm font-semibold text-slate-900">{currentPeriodLabel}</p>
               </div>
-              <button
-                type="button"
-                onClick={() => setMonthState((cur) => shiftMonth(cur, 1))}
-                className="inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-purple-200 text-purple-500 transition hover:bg-purple-50"
-              >
-                <ChevronRight className="h-4 w-4" />
-              </button>
-              <select
-                value={monthState.month}
-                onChange={(e) => setMonthState((cur) => ({ ...cur, month: Number(e.target.value) }))}
-                className="input-field min-w-[140px]"
-              >
-                {getMonthOptions().map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-              </select>
-              <select
-                value={monthState.year}
-                onChange={(e) => setMonthState((cur) => ({ ...cur, year: Number(e.target.value) }))}
-                className="input-field min-w-[120px]"
-              >
-                {getYearOptions(3).map((y) => <option key={y} value={y}>{y}</option>)}
-              </select>
-            </div>
-          </div>
+            }
+          />
 
           {myLoading ? (
             <div className="glass-card p-10 text-center text-sm text-surface-400">Loading salary slip...</div>
@@ -456,80 +583,50 @@ export default function PayrollPage() {
   return (
     <AppShell>
       <div className="mx-auto max-w-7xl space-y-6">
-        {/* Purple hero banner */}
-        <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-violet-700 via-purple-700 to-indigo-800 p-6 purple-glow-lg sm:p-8">
-          <div className="pointer-events-none absolute -right-12 -top-12 h-48 w-48 rounded-full bg-white/5" />
-          <div className="relative z-10 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <div className="mb-1 flex items-center gap-2">
-                <ReceiptText className="h-4 w-4 text-purple-300" />
-                <span className="text-sm font-medium text-purple-300">HR Dashboard</span>
-              </div>
-              <h1 className="font-display text-2xl font-bold text-white sm:text-3xl">Payroll</h1>
-              <p className="mt-1 text-sm text-purple-200">Generate, review, and finalise monthly salary records.</p>
-            </div>
-            <div className="flex flex-wrap gap-2 sm:flex-col sm:items-end">
-              <button
-                key="gen"
-                type="button"
-                onClick={() => setShowGenPanel((v) => !v)}
-                className="inline-flex items-center gap-2 rounded-xl bg-white px-4 py-2.5 text-sm font-semibold text-purple-700 shadow-sm transition hover:bg-purple-50 active:scale-[0.98]"
-              >
-                <Plus className="h-4 w-4" />
-                Generate Payroll
-              </button>
-            </div>
-          </div>
-        </div>
+        <PageHero
+          icon={ReceiptText}
+          eyebrow="HR Payroll Suite"
+          title="Payroll"
+          description="Generate monthly payroll, verify attendance readiness, review every salary record, and publish final slips from one focused workflow."
+          action={
+            <button
+              type="button"
+              onClick={() => setShowGenPanel((v) => !v)}
+              className="inline-flex items-center gap-2 rounded-2xl bg-white px-4 py-3 text-sm font-semibold text-purple-700 shadow-[0_16px_30px_rgba(255,255,255,0.16)] transition hover:bg-purple-50"
+            >
+              <Plus className="h-4 w-4" />
+              {showGenPanel ? 'Hide Generator' : 'Generate Payroll'}
+            </button>
+          }
+          stats={[
+            { label: 'Current cycle', value: currentPeriodLabel, hint: 'Active payroll month' },
+            { label: 'Records', value: String(salaries.length), hint: 'Generated salary rows' },
+            { label: 'Published', value: String(totalFinalised), hint: 'Finalised salary slips' },
+            { label: 'Average payout', value: formatCurrency(averageNet), hint: 'Average net payable' },
+          ]}
+        />
 
-        {/* Month navigation */}
-        <div className="glass-card overflow-hidden">
-          <div className="border-b border-purple-50 bg-gradient-to-r from-purple-50/60 to-white px-5 py-3">
-            <p className="text-xs font-semibold uppercase tracking-wider text-purple-600">Select Period</p>
-          </div>
-          <div className="flex flex-wrap items-center gap-3 p-4">
-            <button
-              type="button"
-              onClick={() => setMonthState((cur) => shiftMonth(cur, -1))}
-              className="inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-purple-200 text-purple-500 transition hover:bg-purple-50"
-            >
-              <ChevronLeft className="h-4 w-4" />
-            </button>
-            <div className="rounded-2xl bg-gradient-to-r from-violet-50 to-purple-50 border border-purple-100 px-4 py-3 text-sm font-bold text-purple-700">
-              {getMonthLabel(monthState.year, monthState.month)}
+        <PeriodNavigator
+          monthState={monthState}
+          setMonthState={setMonthState}
+          title="Select payroll cycle"
+          description="Use the month selector to switch between payroll periods."
+          rightSlot={
+            <div className="hidden items-center gap-2 rounded-[22px] border border-purple-100 bg-white/80 px-4 py-3 text-sm text-surface-400 shadow-sm lg:flex">
+              <Info className="h-4 w-4 text-purple-500" />
+              Click a row to preview the salary slip before publishing it.
             </div>
-            <button
-              type="button"
-              onClick={() => setMonthState((cur) => shiftMonth(cur, 1))}
-              className="inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-purple-200 text-purple-500 transition hover:bg-purple-50"
-            >
-              <ChevronRight className="h-4 w-4" />
-            </button>
-            <select
-              value={monthState.month}
-              onChange={(e) => setMonthState((cur) => ({ ...cur, month: Number(e.target.value) }))}
-              className="input-field min-w-[140px]"
-            >
-              {getMonthOptions().map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-            </select>
-            <select
-              value={monthState.year}
-              onChange={(e) => setMonthState((cur) => ({ ...cur, year: Number(e.target.value) }))}
-              className="input-field min-w-[120px]"
-            >
-              {getYearOptions(3).map((y) => <option key={y} value={y}>{y}</option>)}
-            </select>
-          </div>
-        </div>
+          }
+        />
 
         {/* Generate panel */}
         {showGenPanel && (
           <div className="glass-card overflow-hidden">
             {/* Top accent bar */}
-            <div className="h-1 bg-gradient-to-r from-violet-500 to-purple-600" />
-            <div className="p-6 space-y-5">
+            <div className="border-b border-purple-100/80 bg-gradient-to-r from-white/80 via-purple-50/70 to-white px-6 py-5">
+            <div className="grid gap-5 p-6 xl:grid-cols-2">
               {/* Header */}
-              <div className="flex items-center justify-between">
+              <div className="xl:col-span-2 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                   <div className="flex items-center gap-2 mb-1">
                     <span className="flex h-6 w-6 items-center justify-center rounded-full bg-violet-600 text-xs font-bold text-white">P</span>
@@ -541,16 +638,16 @@ export default function PayrollPage() {
                     Step 1: Check attendance data &nbsp;→&nbsp; Step 2: Run generation
                   </p>
                 </div>
-                <button type="button" onClick={() => { setShowGenPanel(false); setAttCheck(null); }} className="flex h-9 w-9 items-center justify-center rounded-xl border border-purple-100 text-surface-400 hover:text-surface-600 hover:bg-purple-50 transition">
-                  <X className="h-5 w-5" />
+                <button type="button" onClick={() => { setShowGenPanel(false); setAttCheck(null); }} className="inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-purple-100 bg-white text-surface-500 transition hover:bg-purple-50 hover:text-surface-700">
+                  <X className="h-4 w-4" />
                 </button>
               </div>
 
               {/* Step 1 — Attendance health check */}
-              <div className="rounded-2xl border border-purple-100 bg-gradient-to-br from-purple-50/40 to-white p-4">
+              <div className="glass-card-purple relative overflow-hidden p-5">
                 <div className="mb-3 flex items-center gap-2">
-                  <div className="flex h-6 w-6 items-center justify-center rounded-full bg-violet-600 text-xs font-bold text-white">1</div>
-                  <span className="text-sm font-semibold text-gray-800">Verify Attendance Data</span>
+                  <div className="flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-br from-violet-600 to-purple-700 text-xs font-bold text-white shadow-[0_12px_24px_rgba(109,40,217,0.2)]">1</div>
+                  <span className="text-base font-semibold text-gray-900">Verify Attendance Data</span>
                 </div>
                 <div className="flex items-center justify-between mb-3">
                   <p className="text-xs text-surface-400 italic">
@@ -560,9 +657,9 @@ export default function PayrollPage() {
                     type="button"
                     onClick={checkAttendance}
                     disabled={attChecking}
-                    className="inline-flex items-center gap-1.5 rounded-xl bg-violet-100 px-3 py-1.5 text-xs font-semibold text-violet-700 hover:bg-violet-200 disabled:opacity-60"
+                    className="inline-flex items-center gap-2 rounded-2xl bg-violet-100 px-4 py-2 text-sm font-semibold text-violet-700 hover:bg-violet-200 disabled:opacity-60"
                   >
-                    <RefreshCw className={`h-3.5 w-3.5 ${attChecking ? 'animate-spin' : ''}`} />
+                    <RefreshCw className={`h-4 w-4 ${attChecking ? 'animate-spin' : ''}`} />
                     {attChecking ? 'Checking…' : 'Check Attendance'}
                   </button>
                 </div>
@@ -607,9 +704,9 @@ export default function PayrollPage() {
                               </span>
                             ))}
                           </div>
+                          </div>
                         </div>
-                      </div>
-                    )}
+                      )}
 
                     {/* All good */}
                     {attCheck.withoutData === 0 && (
@@ -659,12 +756,12 @@ export default function PayrollPage() {
               </div>
 
               {/* Step 2 — Generate */}
-              <div className="rounded-2xl border border-purple-100 bg-gradient-to-br from-purple-50/40 to-white p-4">
+              <div className="glass-card-purple relative overflow-hidden p-5">
                 <div className="mb-3 flex items-center gap-2">
-                  <div className="flex h-6 w-6 items-center justify-center rounded-full bg-violet-600 text-xs font-bold text-white">2</div>
-                  <span className="text-sm font-semibold text-gray-800">Run Payroll Generation</span>
+                  <div className="flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-br from-violet-600 to-purple-700 text-xs font-bold text-white shadow-[0_12px_24px_rgba(109,40,217,0.2)]">2</div>
+                  <span className="text-base font-semibold text-gray-900">Run Payroll Generation</span>
                 </div>
-                <form onSubmit={handleGenerate} className="grid gap-4 sm:grid-cols-[1fr_200px_auto]">
+                <form onSubmit={handleGenerate} className="space-y-4">
                   <div>
                     <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-surface-500">
                       Employee (leave blank for all)
@@ -698,7 +795,7 @@ export default function PayrollPage() {
                     />
                   </div>
                   <div className="flex items-end">
-                    <button type="submit" disabled={generating} className="btn-primary whitespace-nowrap">
+                    <button type="submit" disabled={generating} className="btn-primary w-full">
                       {generating ? 'Generating…' : 'Run Generation'}
                     </button>
                   </div>
@@ -706,16 +803,29 @@ export default function PayrollPage() {
               </div>
             </div>
           </div>
+        </div>
         )}
 
         {/* Stats */}
-        <div className="grid gap-4 sm:grid-cols-3">
-          <GradientStatCard icon={ReceiptText} label="Total Gross" value={formatCurrency(totalGross)} gradient="from-violet-600 to-purple-700" subtext={`${salaries.length} records`} />
-          <GradientStatCard icon={ReceiptText} label="Total Net Payable" value={formatCurrency(totalNet)} gradient="from-emerald-500 to-teal-600" subtext="After all deductions" />
-          <GradientStatCard icon={Lock} label="Finalised" value={totalFinalised} gradient="from-cyan-500 to-blue-600" subtext={`of ${salaries.length} published`} />
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          <GradientStatCard icon={ReceiptText} label="Total Gross" value={formatCurrency(totalGross)} gradient="from-violet-700 via-purple-700 to-indigo-800" subtext={`${salaries.length} record(s) in this cycle`} />
+          <GradientStatCard icon={ReceiptText} label="Total Net Payable" value={formatCurrency(totalNet)} gradient="from-fuchsia-600 via-purple-700 to-violet-800" subtext="After deductions and adjustments" />
+          <GradientStatCard icon={Lock} label="Published" value={totalFinalised} gradient="from-emerald-500 to-teal-600" subtext={`${draftCount} draft record(s) remaining`} />
+          <GradientStatCard icon={Info} label="Average Payout" value={formatCurrency(averageNet)} gradient="from-indigo-500 to-blue-600" subtext="Average net payable per record" />
         </div>
 
         <div className="glass-card overflow-hidden">
+          <div className="flex flex-col gap-3 border-b border-purple-100/80 bg-gradient-to-r from-white/80 via-purple-50/70 to-white px-6 py-5 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="text-[11px] font-semibold uppercase tracking-[0.32em] text-purple-600">Payroll ledger</p>
+              <h2 className="mt-1 font-display text-2xl font-bold text-slate-900">Salary records for {currentPeriodLabel}</h2>
+              <p className="mt-1 text-sm text-surface-400">Review each record, open the salary slip preview, edit draft deductions, and publish final slips.</p>
+            </div>
+            <div className="rounded-[22px] border border-purple-100 bg-white/80 px-4 py-3 text-right shadow-sm">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.28em] text-purple-500">Loaded</p>
+              <p className="mt-1 text-sm font-semibold text-slate-900">{salaries.length} payroll record(s)</p>
+            </div>
+          </div>
           {loading ? (
             <div className="p-10 text-center text-sm text-surface-400">Loading payroll records...</div>
           ) : salaries.length === 0 ? (
@@ -734,11 +844,11 @@ export default function PayrollPage() {
             <div className="overflow-x-auto">
               <table className="w-full min-w-[1240px]">
                 <thead>
-                  <tr className="border-b border-purple-100 bg-gradient-to-r from-purple-50 to-violet-50/60">
+                  <tr className="border-b border-purple-100 bg-gradient-to-r from-purple-50 to-violet-50/70">
                     {['Employee', 'Gross', 'Absent Ded.', 'Late Ded.', 'Leave Ded.', 'Other Ded.', 'Net Payable', 'Status', 'Actions'].map((h) => (
                       <th
                         key={h}
-                        className={`px-5 py-3.5 text-xs font-bold uppercase tracking-wider text-purple-700 ${h === 'Actions' ? 'text-right' : 'text-left'}`}
+                        className={`px-5 py-3.5 text-[11px] font-semibold uppercase tracking-[0.3em] text-purple-700 ${h === 'Actions' ? 'text-right' : 'text-left'}`}
                       >
                         {h}
                       </th>
@@ -751,26 +861,26 @@ export default function PayrollPage() {
                     return (
                       <tr
                         key={salary._id}
-                        className="hover:bg-purple-50/30 transition-colors cursor-pointer"
+                        className="cursor-pointer bg-white transition-colors hover:bg-purple-50/60"
                         onClick={() => setSelectedSalary(salary)}
                       >
                         <td className="px-5 py-4" onClick={(e) => e.stopPropagation()}>
                           <div className="flex items-center gap-3">
-                            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-violet-500 to-purple-600">
-                              <span className="text-xs font-bold text-white">{emp.name?.charAt(0)?.toUpperCase() || '?'}</span>
+                            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-violet-500 to-purple-700 shadow-[0_12px_24px_rgba(109,40,217,0.18)]">
+                              <span className="text-sm font-bold text-white">{emp.name?.charAt(0)?.toUpperCase() || '?'}</span>
                             </div>
                             <div>
-                              <p className="text-sm font-semibold text-gray-900">{emp.name || '-'}</p>
+                              <p className="text-sm font-semibold text-slate-900">{emp.name || '-'}</p>
                               <p className="text-xs text-surface-400">{emp.employeeId || '-'} · {emp.department || '-'}</p>
                             </div>
                           </div>
                         </td>
-                        <td className="px-5 py-4 text-sm text-gray-700">{formatCurrency(salary.grossSalary)}</td>
-                        <td className="px-5 py-4 text-sm text-red-600">{formatCurrency(salary.absentDeduction)}</td>
-                        <td className="px-5 py-4 text-sm text-red-600">{formatCurrency(salary.lateDeduction)}</td>
-                        <td className="px-5 py-4 text-sm text-red-600">{formatCurrency(salary.leaveDeduction)}</td>
-                        <td className="px-5 py-4 text-sm text-red-600">{formatCurrency(salary.otherDeductions)}</td>
-                        <td className="px-5 py-4 text-sm font-semibold text-gray-900">{formatCurrency(salary.netPayable)}</td>
+                        <td className="px-5 py-4 text-sm text-slate-700">{formatCurrency(salary.grossSalary)}</td>
+                        <td className="px-5 py-4 text-sm text-rose-600">{formatCurrency(salary.absentDeduction)}</td>
+                        <td className="px-5 py-4 text-sm text-rose-600">{formatCurrency(salary.lateDeduction)}</td>
+                        <td className="px-5 py-4 text-sm text-rose-600">{formatCurrency(salary.leaveDeduction)}</td>
+                        <td className="px-5 py-4 text-sm text-rose-600">{formatCurrency(salary.otherDeductions)}</td>
+                        <td className="px-5 py-4 text-sm font-display font-bold text-slate-900">{formatCurrency(salary.netPayable)}</td>
                         <td className="px-5 py-4">
                           <span className={`status-badge ${getStatusTone(salary.status)}`}>{salary.status}</span>
                         </td>
@@ -780,7 +890,7 @@ export default function PayrollPage() {
                               <button
                                 type="button"
                                 onClick={() => setEditSalary(salary)}
-                                className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-purple-100 text-surface-500 hover:border-violet-300 hover:bg-violet-50 hover:text-violet-700 transition"
+                                className="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-purple-100 bg-white text-surface-500 transition hover:border-violet-300 hover:bg-violet-50 hover:text-violet-700"
                                 title="Edit"
                               >
                                 <Edit2 className="h-4 w-4" />
@@ -790,7 +900,7 @@ export default function PayrollPage() {
                               <button
                                 type="button"
                                 onClick={() => handleFinalise(salary._id)}
-                                className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-emerald-200 bg-emerald-50 px-3 text-xs font-medium text-emerald-700 hover:bg-emerald-100 transition"
+                                className="inline-flex h-10 items-center gap-2 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 text-xs font-semibold text-emerald-700 transition hover:bg-emerald-100"
                                 title="Finalise"
                               >
                                 <Lock className="h-3.5 w-3.5" />

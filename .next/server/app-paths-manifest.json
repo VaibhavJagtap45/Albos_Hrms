@@ -1,10 +1,8 @@
 {
-  "/profile/page": "app/profile/page.js",
-  "/holidays/page": "app/holidays/page.js",
-  "/notices/page": "app/notices/page.js",
+  "/login/page": "app/login/page.js",
+  "/dashboard/page": "app/dashboard/page.js",
   "/payroll/page": "app/payroll/page.js",
   "/leaves/page": "app/leaves/page.js",
   "/attendance/page": "app/attendance/page.js",
-  "/employees/page": "app/employees/page.js",
-  "/dashboard/page": "app/dashboard/page.js"
+  "/notices/page": "app/notices/page.js"
 }

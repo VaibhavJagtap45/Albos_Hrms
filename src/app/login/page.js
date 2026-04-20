@@ -17,9 +17,12 @@ import {
   RefreshCw,
   Send,
   ShieldCheck,
+  Sparkles,
 } from 'lucide-react';
 import { useAuth } from '@/lib/auth';
 import { authAPI } from '@/lib/api';
+import StarField from '@/components/StarField';
+import PasswordStrength, { MIN_PASSWORD_LENGTH } from '@/components/PasswordStrength';
 
 // ── View states ───────────────────────────────────────────────────────────────
 const VIEW = {
@@ -31,9 +34,9 @@ const VIEW = {
 };
 
 const FEATURES = [
-  { title: 'Attendance Calendar',  copy: 'Track monthly presence, late marks, holidays, and working hours in one view.',       gradient: 'from-brand-500/20 to-brand-700/10',   delay: '0.5s'  },
-  { title: 'Leave Workflow',       copy: 'Submit, review, and action leave requests with real-time status tracking.',          gradient: 'from-green-500/20 to-emerald-700/10', delay: '0.65s' },
-  { title: 'Payroll Ready',        copy: 'Generate accurate salary slips from attendance and approved leave data.',            gradient: 'from-purple-500/20 to-violet-700/10', delay: '0.8s'  },
+  { title: 'Attendance Calendar',  copy: 'Track monthly presence, late marks, holidays, and working hours in one view.',       gradient: 'from-violet-500/25 to-brand-700/10',   delay: '0.5s'  },
+  { title: 'Leave Workflow',       copy: 'Submit, review, and action leave requests with real-time status tracking.',          gradient: 'from-fuchsia-500/20 to-violet-700/10', delay: '0.65s' },
+  { title: 'Payroll Ready',        copy: 'Generate accurate salary slips from attendance and approved leave data.',            gradient: 'from-indigo-500/20 to-violet-700/10', delay: '0.8s'  },
 ];
 
 // ── OTP input — 6 individual boxes ────────────────────────────────────────────
@@ -99,38 +102,6 @@ function OtpInput({ value, onChange, disabled }) {
             }`}
         />
       ))}
-    </div>
-  );
-}
-
-// ── Password strength meter ────────────────────────────────────────────────────
-function StrengthMeter({ password }) {
-  if (!password) return null;
-  const strength = (() => {
-    if (password.length < 6) return 0;
-    let s = 1;
-    if (password.length >= 10) s++;
-    if (/[A-Z]/.test(password)) s++;
-    if (/[0-9]/.test(password)) s++;
-    if (/[^A-Za-z0-9]/.test(password)) s++;
-    return Math.min(s, 4);
-  })();
-  const configs = [
-    null,
-    { label: 'Weak',   color: 'bg-red-500',   text: 'text-red-400'   },
-    { label: 'Fair',   color: 'bg-amber-500',  text: 'text-amber-400' },
-    { label: 'Good',   color: 'bg-blue-500',   text: 'text-blue-400'  },
-    { label: 'Strong', color: 'bg-green-500',  text: 'text-green-400' },
-  ];
-  const cfg = configs[strength];
-  return (
-    <div className="mt-2 space-y-1">
-      <div className="flex gap-1">
-        {[1,2,3,4].map((n) => (
-          <div key={n} className={`h-1 flex-1 rounded-full transition-all duration-300 ${n <= strength ? cfg.color : 'bg-white/10'}`} />
-        ))}
-      </div>
-      <p className={`text-xs ${cfg.text}`}>{cfg.label}</p>
     </div>
   );
 }
@@ -235,7 +206,7 @@ export default function LoginPage() {
 
   const handleResetPass = async (e) => {
     e.preventDefault();
-    if (newPass.length < 6) { toast.error('Password must be at least 6 characters.'); return; }
+    if (newPass.length < MIN_PASSWORD_LENGTH) { toast.error(`Password must be at least ${MIN_PASSWORD_LENGTH} characters.`); return; }
     if (newPass !== confirmPass) { toast.error('Passwords do not match.'); return; }
     setResettingPass(true);
     try {
@@ -256,18 +227,19 @@ export default function LoginPage() {
   if (loading && !user) return null;
 
   return (
-    <div className="min-h-screen overflow-hidden" style={{ background: 'linear-gradient(135deg,#0a0f1e 0%,#0f172a 40%,#0d1b35 100%)' }}>
+    <div className="galaxy-stage min-h-screen">
 
-      {/* ── Animated orbs ─────────────────────────────────────────────────── */}
+      {/* ── Star field ────────────────────────────────────────────────────── */}
+      <StarField count={320} shooterCount={9} />
+
+      {/* ── Ambient light orbs (depth atmosphere) ────────────────────────── */}
       <div className="pointer-events-none fixed inset-0 overflow-hidden" aria-hidden="true">
-        <div className="absolute -top-32 -left-32 h-[600px] w-[600px] rounded-full opacity-20 animate-float"
-          style={{ background: 'radial-gradient(circle,#4c6ef5 0%,transparent 70%)' }} />
-        <div className="absolute -bottom-48 -right-24 h-[500px] w-[500px] rounded-full opacity-15 animate-float-delayed"
-          style={{ background: 'radial-gradient(circle,#22c55e 0%,transparent 70%)' }} />
-        <div className="absolute top-1/2 left-1/2 h-[400px] w-[400px] -translate-x-1/2 -translate-y-1/2 rounded-full opacity-10 animate-float-slow"
-          style={{ background: 'radial-gradient(circle,#a855f7 0%,transparent 70%)' }} />
-        <div className="absolute inset-0 opacity-[0.03]"
-          style={{ backgroundImage: 'linear-gradient(rgba(255,255,255,.5) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.5) 1px,transparent 1px)', backgroundSize: '64px 64px' }} />
+        <div className="absolute -top-32 -left-32 h-[640px] w-[640px] rounded-full opacity-[0.18]"
+          style={{ background: 'radial-gradient(circle,#8b5cf6 0%,transparent 68%)', animation: 'float 12s ease-in-out infinite' }} />
+        <div className="absolute -bottom-52 -right-28 h-[540px] w-[540px] rounded-full opacity-[0.13]"
+          style={{ background: 'radial-gradient(circle,#d946ef 0%,transparent 68%)', animation: 'float 16s ease-in-out 3s infinite' }} />
+        <div className="absolute top-1/2 left-1/2 h-[460px] w-[460px] -translate-x-1/2 -translate-y-1/2 rounded-full opacity-[0.10]"
+          style={{ background: 'radial-gradient(circle,#818cf8 0%,transparent 70%)', animation: 'float 20s ease-in-out 7s infinite' }} />
         <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-brand-400/40 to-transparent" />
       </div>
 
@@ -276,7 +248,7 @@ export default function LoginPage() {
 
         {/* ── Left panel ──────────────────────────────────────────────────── */}
         <section className="relative hidden overflow-hidden lg:flex">
-          <div className="absolute inset-0 bg-gradient-to-br from-brand-600/10 via-transparent to-green-600/8" />
+          <div className="absolute inset-0 bg-gradient-to-br from-violet-500/[0.18] via-transparent to-fuchsia-500/[0.12]" />
           <div className="absolute inset-y-0 right-0 w-px bg-gradient-to-b from-transparent via-white/10 to-transparent" />
           <div className="relative z-10 flex w-full flex-col justify-between p-12 xl:p-16">
 
@@ -294,14 +266,17 @@ export default function LoginPage() {
             </div>
 
             <div style={{ animation: 'slideUp 0.6s ease-out 0.25s both' }}>
-              <p className="text-xs font-semibold uppercase tracking-[0.3em] text-brand-400">Unified Workforce System</p>
+              <span className="galaxy-badge">
+                <Sparkles className="h-3.5 w-3.5" />
+                Galaxy Workforce System
+              </span>
               <h1 className="mt-5 font-display text-4xl font-bold leading-tight text-white xl:text-5xl">
                 Attendance, leave,{' '}
-                <span className="bg-gradient-to-r from-brand-300 to-brand-500 bg-clip-text text-transparent">payroll,</span>{' '}
+                <span className="bg-gradient-to-r from-violet-200 via-brand-300 to-fuchsia-300 bg-clip-text text-transparent">payroll,</span>{' '}
                 and communication — all in one place.
               </h1>
               <p className="mt-5 max-w-lg text-base leading-7 text-white/50">
-                Sign in with your office email or employee ID to access dashboards built for HR teams and employees alike.
+                Sign in with your office email or employee ID to access dashboards crafted for HR teams and employees with the same polished experience.
               </p>
             </div>
 
@@ -334,7 +309,7 @@ export default function LoginPage() {
             </div>
 
             {/* Card */}
-            <div className="relative overflow-hidden rounded-[28px] border border-white/[0.08] bg-white/[0.05] shadow-2xl shadow-black/30 backdrop-blur-2xl"
+            <div className="galaxy-card"
               style={{ animation: 'scaleIn 0.5s ease-out 0.15s both' }}>
               <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-brand-400/50 to-transparent" />
               <div className="absolute -top-24 left-1/2 h-48 w-48 -translate-x-1/2 rounded-full bg-brand-500/10 blur-3xl" />
@@ -383,7 +358,7 @@ export default function LoginPage() {
 
                       <div style={{ animation: 'slideUp 0.4s ease-out 0.46s both' }}>
                         <button type="submit" disabled={submitting}
-                          className="group relative mt-1 inline-flex w-full items-center justify-center gap-2 overflow-hidden rounded-2xl bg-brand-600 px-5 py-3.5 text-sm font-semibold text-white transition-all hover:bg-brand-500 hover:shadow-lg hover:shadow-brand-600/30 disabled:cursor-not-allowed disabled:opacity-60 active:scale-[0.98]">
+                          className="group relative mt-1 inline-flex w-full items-center justify-center gap-2 overflow-hidden rounded-2xl bg-gradient-to-r from-brand-600 via-violet-600 to-fuchsia-600 px-5 py-3.5 text-sm font-semibold text-white transition-all hover:from-brand-500 hover:via-violet-500 hover:to-fuchsia-500 hover:shadow-lg hover:shadow-brand-600/30 disabled:cursor-not-allowed disabled:opacity-60 active:scale-[0.98]">
                           <span className="absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/10 to-transparent transition-transform duration-500 group-hover:translate-x-full" />
                           {submitting ? <span className="h-5 w-5 animate-spin rounded-full border-2 border-white/30 border-t-white" />
                             : <> Sign In <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" /> </>}
@@ -433,7 +408,7 @@ export default function LoginPage() {
                         </div>
                       </div>
                       <button type="submit" disabled={sendingOtp}
-                        className="group relative inline-flex w-full items-center justify-center gap-2 overflow-hidden rounded-2xl bg-brand-600 px-5 py-3.5 text-sm font-semibold text-white transition-all hover:bg-brand-500 hover:shadow-lg hover:shadow-brand-600/30 disabled:opacity-60 active:scale-[0.98]">
+                        className="group relative inline-flex w-full items-center justify-center gap-2 overflow-hidden rounded-2xl bg-gradient-to-r from-brand-600 via-violet-600 to-fuchsia-600 px-5 py-3.5 text-sm font-semibold text-white transition-all hover:from-brand-500 hover:via-violet-500 hover:to-fuchsia-500 hover:shadow-lg hover:shadow-brand-600/30 disabled:opacity-60 active:scale-[0.98]">
                         <span className="absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/10 to-transparent transition-transform duration-500 group-hover:translate-x-full" />
                         {sendingOtp ? <span className="h-5 w-5 animate-spin rounded-full border-2 border-white/30 border-t-white" />
                           : <> <Send className="h-4 w-4" /> Send OTP </>}
@@ -467,7 +442,7 @@ export default function LoginPage() {
                       <OtpInput value={otp} onChange={setOtp} disabled={verifyingOtp} />
 
                       <button type="submit" disabled={verifyingOtp || otp.length < 6}
-                        className="group relative inline-flex w-full items-center justify-center gap-2 overflow-hidden rounded-2xl bg-brand-600 px-5 py-3.5 text-sm font-semibold text-white transition-all hover:bg-brand-500 hover:shadow-lg hover:shadow-brand-600/30 disabled:opacity-60 active:scale-[0.98]">
+                        className="group relative inline-flex w-full items-center justify-center gap-2 overflow-hidden rounded-2xl bg-gradient-to-r from-brand-600 via-violet-600 to-fuchsia-600 px-5 py-3.5 text-sm font-semibold text-white transition-all hover:from-brand-500 hover:via-violet-500 hover:to-fuchsia-500 hover:shadow-lg hover:shadow-brand-600/30 disabled:opacity-60 active:scale-[0.98]">
                         <span className="absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/10 to-transparent transition-transform duration-500 group-hover:translate-x-full" />
                         {verifyingOtp ? <span className="h-5 w-5 animate-spin rounded-full border-2 border-white/30 border-t-white" />
                           : <> Verify OTP <ArrowRight className="h-4 w-4" /> </>}
@@ -518,7 +493,7 @@ export default function LoginPage() {
                             {showNew ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                           </button>
                         </div>
-                        <StrengthMeter password={newPass} />
+                        <PasswordStrength password={newPass} variant="dark" />
                       </div>
 
                       <div>
@@ -539,7 +514,7 @@ export default function LoginPage() {
                       </div>
 
                       <button type="submit" disabled={resettingPass || newPass.length < 6}
-                        className="group relative inline-flex w-full items-center justify-center gap-2 overflow-hidden rounded-2xl bg-brand-600 px-5 py-3.5 text-sm font-semibold text-white transition-all hover:bg-brand-500 hover:shadow-lg hover:shadow-brand-600/30 disabled:opacity-60 active:scale-[0.98]">
+                        className="group relative inline-flex w-full items-center justify-center gap-2 overflow-hidden rounded-2xl bg-gradient-to-r from-brand-600 via-violet-600 to-fuchsia-600 px-5 py-3.5 text-sm font-semibold text-white transition-all hover:from-brand-500 hover:via-violet-500 hover:to-fuchsia-500 hover:shadow-lg hover:shadow-brand-600/30 disabled:opacity-60 active:scale-[0.98]">
                         <span className="absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/10 to-transparent transition-transform duration-500 group-hover:translate-x-full" />
                         {resettingPass ? <span className="h-5 w-5 animate-spin rounded-full border-2 border-white/30 border-t-white" />
                           : <> Reset Password <ArrowRight className="h-4 w-4" /> </>}
@@ -559,7 +534,7 @@ export default function LoginPage() {
                       Your password has been updated successfully. Sign in with your new password.
                     </p>
                     <button type="button" onClick={goBack}
-                      className="group relative mt-6 inline-flex w-full items-center justify-center gap-2 overflow-hidden rounded-2xl bg-brand-600 py-3.5 text-sm font-semibold text-white transition-all hover:bg-brand-500 hover:shadow-lg hover:shadow-brand-600/30 active:scale-[0.98]">
+                      className="group relative mt-6 inline-flex w-full items-center justify-center gap-2 overflow-hidden rounded-2xl bg-gradient-to-r from-brand-600 via-violet-600 to-fuchsia-600 py-3.5 text-sm font-semibold text-white transition-all hover:from-brand-500 hover:via-violet-500 hover:to-fuchsia-500 hover:shadow-lg hover:shadow-brand-600/30 active:scale-[0.98]">
                       <span className="absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/10 to-transparent transition-transform duration-500 group-hover:translate-x-full" />
                       Sign In Now
                       <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />

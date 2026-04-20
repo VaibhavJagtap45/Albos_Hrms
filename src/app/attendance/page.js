@@ -16,6 +16,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Clock,
+  Download,
   Edit2,
   FileText,
   History,
@@ -771,7 +772,7 @@ function HRAttendancePage() {
   const [empSearch, setEmpSearch] = useState("");
   const [showEmpDrop, setShowEmpDrop] = useState(false);
 
-  // CSV import modal
+  // CSV import modal (legacy column-based punch logs)
   const [importModal, setImportModal] = useState(false);
   const [importFile, setImportFile] = useState(null);
   const [importing, setImporting] = useState(false);
@@ -786,6 +787,14 @@ function HRAttendancePage() {
   const [monthlyImporting, setMonthlyImporting] = useState(false);
   const [monthlyResult, setMonthlyResult] = useState(null);
   const monthlyFileRef = useRef(null);
+
+  // Daily detailed XLS import (Secureye/ONtime "Date wise Daily Attendance Report")
+  const [dailyModal, setDailyModal] = useState(false);
+  const [dailyFile, setDailyFile] = useState(null);
+  const [dailyImporting, setDailyImporting] = useState(false);
+  const [dailyResult, setDailyResult] = useState(null);
+  const [dailyDragOver, setDailyDragOver] = useState(false);
+  const dailyFileRef = useRef(null);
 
   // Delete confirm
   const [deleteId, setDeleteId] = useState(null);
@@ -995,6 +1004,55 @@ function HRAttendancePage() {
     }
   };
 
+  // ── Daily detailed XLS import (Secureye / ONtime fingerprint device) ──────
+  const MAX_DAILY_FILE_BYTES = 10 * 1024 * 1024; // 10 MB
+  const isAcceptedDailyFile = (file) => {
+    if (!file) return false;
+    const name = file.name?.toLowerCase() || "";
+    return name.endsWith(".xls") || name.endsWith(".xlsx");
+  };
+
+  const openDailyModal = () => {
+    setDailyFile(null);
+    setDailyResult(null);
+    setDailyDragOver(false);
+    setDailyModal(true);
+  };
+
+  const acceptDailyFile = (file) => {
+    if (!file) return;
+    if (!isAcceptedDailyFile(file)) {
+      toast.error("Please select an .xls or .xlsx file.");
+      return;
+    }
+    if (file.size > MAX_DAILY_FILE_BYTES) {
+      toast.error("File is larger than 10 MB.");
+      return;
+    }
+    setDailyFile(file);
+    setDailyResult(null);
+  };
+
+  const handleDailyImport = async () => {
+    if (!dailyFile || dailyImporting) return;
+    setDailyImporting(true);
+    setDailyResult(null);
+    try {
+      const { data } = await attendanceAPI.dailyUpload(dailyFile);
+      setDailyResult(data);
+      if (data.inserted > 0) {
+        toast.success(`${data.inserted} punch event(s) imported.`);
+        loadDaily();
+      } else {
+        toast("Import finished — review the results below.", { icon: "ℹ️" });
+      }
+    } catch (err) {
+      toast.error(err.response?.data?.message || "Daily import failed.");
+    } finally {
+      setDailyImporting(false);
+    }
+  };
+
   // ── Correction request review ─────────────────────────────────────────────
   const handleReview = async (e) => {
     e.preventDefault();
@@ -1070,7 +1128,7 @@ function HRAttendancePage() {
                 className="inline-flex items-center gap-2 rounded-xl bg-white/10 px-4 py-2.5 text-sm font-semibold text-white backdrop-blur-sm transition hover:bg-white/20 active:scale-[0.98]"
               >
                 <Upload className="w-4 h-4" />
-                Import CSV
+                Daily Import
               </button>
               <button
                 onClick={openAdd}

@@ -11,6 +11,7 @@ import {
   EyeOff,
   Fingerprint,
   KeyRound,
+  Sparkles,
   XCircle,
 } from 'lucide-react';
 import { authAPI } from '@/lib/api';
@@ -80,7 +81,7 @@ function ResetPasswordForm() {
   /* ── Invalid / missing token ─────────────────────────── */
   if (!token) {
     return (
-      <div className="text-center">
+      <div className="relative z-10 text-center">
         <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-full bg-red-500/15 ring-1 ring-red-500/25">
           <XCircle className="h-8 w-8 text-red-400" />
         </div>
@@ -90,7 +91,7 @@ function ResetPasswordForm() {
         </p>
         <Link
           href="/forgot-password"
-          className="mt-6 inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-brand-600 py-3.5 text-sm font-semibold text-white transition hover:bg-brand-500"
+          className="mt-6 inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-brand-600 via-violet-600 to-fuchsia-600 py-3.5 text-sm font-semibold text-white transition hover:from-brand-500 hover:via-violet-500 hover:to-fuchsia-500"
         >
           Request New Link
         </Link>
@@ -101,7 +102,7 @@ function ResetPasswordForm() {
   /* ── Success state ───────────────────────────────────── */
   if (done) {
     return (
-      <div className="text-center">
+      <div className="relative z-10 text-center">
         <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-full bg-green-500/15 ring-1 ring-green-500/25">
           <CheckCircle2 className="h-8 w-8 text-green-400" />
         </div>
@@ -114,7 +115,7 @@ function ResetPasswordForm() {
         </div>
         <Link
           href="/login"
-          className="mt-5 inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-brand-600 py-3.5 text-sm font-semibold text-white transition hover:bg-brand-500"
+          className="mt-5 inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-brand-600 via-violet-600 to-fuchsia-600 py-3.5 text-sm font-semibold text-white transition hover:from-brand-500 hover:via-violet-500 hover:to-fuchsia-500"
         >
           Sign In Now
           <ArrowRight className="h-4 w-4" />
@@ -126,8 +127,11 @@ function ResetPasswordForm() {
   /* ── Reset form ──────────────────────────────────────── */
   return (
     <>
-      <div className="mb-7">
-        <p className="text-sm uppercase tracking-[0.22em] text-white/45">Account Recovery</p>
+      <div className="relative z-10 mb-7">
+        <span className="galaxy-badge">
+          <Sparkles className="h-3.5 w-3.5" />
+          Account Recovery
+        </span>
         <h2 className="mt-3 font-display text-3xl font-bold text-white">Set new password</h2>
         <p className="mt-2 text-sm leading-6 text-white/50">
           Choose a strong password you haven't used before. It must be at least 6 characters.
@@ -212,7 +216,7 @@ function ResetPasswordForm() {
         <button
           type="submit"
           disabled={submitting || strength === 'weak'}
-          className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-brand-600 px-5 py-3.5 text-sm font-semibold text-white transition hover:bg-brand-500 disabled:cursor-not-allowed disabled:opacity-60"
+          className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-brand-600 via-violet-600 to-fuchsia-600 px-5 py-3.5 text-sm font-semibold text-white transition hover:from-brand-500 hover:via-violet-500 hover:to-fuchsia-500 disabled:cursor-not-allowed disabled:opacity-60"
         >
           {submitting ? (
             <span className="h-5 w-5 animate-spin rounded-full border-2 border-white/30 border-t-white" />
@@ -232,6 +236,15 @@ function ResetPasswordForm() {
             Back to Sign In
           </Link>
         </div>
+
+        <div className="rounded-2xl border border-white/10 bg-white/[0.05] p-4">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-white/35">
+            Password guidance
+          </p>
+          <p className="mt-2 text-xs leading-5 text-white/55">
+            A stronger password uses a mix of upper-case letters, numbers, and symbols to move into the highest safety band.
+          </p>
+        </div>
       </form>
     </>
   );
@@ -239,24 +252,29 @@ function ResetPasswordForm() {
 
 export default function ResetPasswordPage() {
   return (
-    <div className="min-h-screen" style={{ background: 'var(--bg-gradient)' }}>
-      <div className="flex min-h-screen items-center justify-center px-5 py-12">
-        <div className="w-full max-w-md">
+    <div className="galaxy-stage min-h-screen">
+      <div className="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden="true">
+        <div className="absolute -left-20 top-10 h-72 w-72 rounded-full bg-violet-500/20 blur-3xl" />
+        <div className="absolute right-[-60px] top-20 h-80 w-80 rounded-full bg-fuchsia-500/[0.14] blur-3xl" />
+        <div className="absolute bottom-[-40px] left-1/3 h-60 w-60 rounded-full bg-indigo-500/[0.12] blur-3xl" />
+      </div>
+      <div className="relative z-10 flex min-h-screen items-center justify-center px-5 py-12">
+        <div className="w-full max-w-lg">
 
           {/* Logo */}
           <div className="mb-8 flex items-center gap-3">
-            <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-white/10 ring-1 ring-white/10 backdrop-blur">
+            <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-brand-600/25 ring-1 ring-brand-400/30 backdrop-blur">
               <Fingerprint className="h-5 w-5 text-brand-300" />
             </div>
             <div>
               <p className="font-display text-lg font-bold tracking-tight text-white">HRMS</p>
-              <p className="text-xs text-white/45">Albos Technology</p>
+              <p className="text-xs text-white/40">Albos Technology</p>
             </div>
           </div>
 
-          <div className="rounded-[28px] border border-white/10 bg-white/[0.06] p-7 shadow-2xl shadow-black/20 backdrop-blur-xl sm:p-8">
+          <div className="galaxy-card p-7 sm:p-8">
             <Suspense fallback={
-              <div className="flex justify-center py-12">
+              <div className="relative z-10 flex justify-center py-12">
                 <span className="h-8 w-8 animate-spin rounded-full border-2 border-white/20 border-t-white" />
               </div>
             }>

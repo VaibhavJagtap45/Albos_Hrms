@@ -22,9 +22,10 @@ import {
   UserCircle,
 } from "lucide-react";
 import { formatDate, getStatusTone } from "@/lib/utils";
+import PasswordStrength, { MIN_PASSWORD_LENGTH } from "@/components/PasswordStrength";
 
 export default function ProfilePage() {
-  const { user, updateUser, refreshUser } = useAuth();
+  const { user, updateUser } = useAuth();
 
   // Profile fields
   const [name, setName] = useState("");
@@ -162,23 +163,36 @@ export default function ProfilePage() {
     }
   };
 
+  const pwMatches = pwForm.confirm.length > 0 && pwForm.newPw === pwForm.confirm;
+  const pwSameAsCurrent = pwForm.newPw.length > 0 && pwForm.newPw === pwForm.current;
+  const pwCanSubmit =
+    !savingPw &&
+    pwForm.current.length > 0 &&
+    pwForm.newPw.length >= MIN_PASSWORD_LENGTH &&
+    pwMatches &&
+    !pwSameAsCurrent;
+
   const handleChangePassword = async (e) => {
     e.preventDefault();
+    if (pwForm.newPw.length < MIN_PASSWORD_LENGTH) {
+      toast.error(`New password must be at least ${MIN_PASSWORD_LENGTH} characters.`);
+      return;
+    }
     if (pwForm.newPw !== pwForm.confirm) {
       toast.error("New passwords do not match.");
       return;
     }
-    if (pwForm.newPw.length < 6) {
-      toast.error("New password must be at least 6 characters.");
+    if (pwSameAsCurrent) {
+      toast.error("New password must be different from your current password.");
       return;
     }
     setSavingPw(true);
     try {
-      await authAPI.changePassword(pwForm.current, pwForm.newPw);
+      const { data } = await authAPI.changePassword(pwForm.current, pwForm.newPw);
+      updateUser(data.user, data.token);
       toast.success("Password changed successfully.");
       setPwForm({ current: "", newPw: "", confirm: "" });
       setShowChangePw(false);
-      await refreshUser();
     } catch (err) {
       toast.error(err.response?.data?.message || "Failed to change password.");
     } finally {
@@ -626,10 +640,10 @@ export default function ProfilePage() {
                               }))
                             }
                             className="input-field pr-11"
-                            minLength={6}
+                            minLength={MIN_PASSWORD_LENGTH}
                             required
                             autoComplete="new-password"
-                            placeholder="Min 6 characters"
+                            placeholder={`Min ${MIN_PASSWORD_LENGTH} characters`}
                           />
                           <button
                             type="button"
@@ -643,6 +657,12 @@ export default function ProfilePage() {
                             )}
                           </button>
                         </div>
+                        <PasswordStrength password={pwForm.newPw} variant="light" />
+                        {pwSameAsCurrent && (
+                          <p className="mt-1 text-xs text-red-500">
+                            New password must differ from your current password.
+                          </p>
+                        )}
                       </div>
                       <div>
                         <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-surface-500">
@@ -657,17 +677,20 @@ export default function ProfilePage() {
                               confirm: e.target.value,
                             }))
                           }
-                          className="input-field"
+                          className={`input-field ${pwForm.confirm && !pwMatches ? "border-red-400 focus:border-red-500 focus:ring-red-200" : ""}`}
                           required
                           autoComplete="new-password"
                           placeholder="Re-enter new password"
                         />
+                        {pwForm.confirm && !pwMatches && (
+                          <p className="mt-1 text-xs text-red-500">Passwords do not match.</p>
+                        )}
                       </div>
                     </div>
                     <div className="flex items-center gap-3">
                       <button
                         type="submit"
-                        disabled={savingPw}
+                        disabled={!pwCanSubmit}
                         className="btn-primary"
                       >
                         <KeyRound className="h-4 w-4" />

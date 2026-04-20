@@ -10,6 +10,7 @@ import {
   IdCard,
   MailOpen,
   Send,
+  Sparkles,
 } from 'lucide-react';
 import { authAPI } from '@/lib/api';
 
@@ -44,26 +45,31 @@ export default function ForgotPasswordPage() {
   };
 
   return (
-    <div className="min-h-screen" style={{ background: 'var(--bg-gradient)' }}>
-      <div className="flex min-h-screen items-center justify-center px-5 py-12">
-        <div className="w-full max-w-md">
+    <div className="galaxy-stage min-h-screen">
+      <div className="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden="true">
+        <div className="absolute -left-24 top-12 h-72 w-72 rounded-full bg-violet-500/20 blur-3xl" />
+        <div className="absolute bottom-0 right-[-80px] h-80 w-80 rounded-full bg-fuchsia-500/[0.14] blur-3xl" />
+        <div className="absolute top-1/3 right-1/4 h-56 w-56 rounded-full bg-indigo-500/[0.12] blur-3xl" />
+      </div>
+      <div className="relative z-10 flex min-h-screen items-center justify-center px-5 py-12">
+        <div className="w-full max-w-lg">
 
           {/* Logo */}
           <div className="mb-8 flex items-center gap-3">
-            <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-white/10 ring-1 ring-white/10 backdrop-blur">
+            <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-brand-600/25 ring-1 ring-brand-400/30 backdrop-blur">
               <Fingerprint className="h-5 w-5 text-brand-300" />
             </div>
             <div>
               <p className="font-display text-lg font-bold tracking-tight text-white">HRMS</p>
-              <p className="text-xs text-white/45">Albos Technology</p>
+              <p className="text-xs text-white/40">Albos Technology</p>
             </div>
           </div>
 
-          <div className="rounded-[28px] border border-white/10 bg-white/[0.06] p-7 shadow-2xl shadow-black/20 backdrop-blur-xl sm:p-8">
+          <div className="galaxy-card p-7 sm:p-8">
 
             {sent ? (
               /* ── Success state ─────────────────────────────── */
-              <div className="text-center">
+              <div className="relative z-10 text-center">
                 <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-full bg-green-500/15 ring-1 ring-green-500/25">
                   {devUrl ? (
                     <MailOpen className="h-8 w-8 text-green-400" />
@@ -76,7 +82,7 @@ export default function ForgotPasswordPage() {
                 </h2>
                 <p className="mt-3 text-sm leading-6 text-white/55">
                   {devUrl
-                    ? 'SMTP is not configured. Use the link below to reset the password directly.'
+                    ? 'SMTP is not configured, so the direct recovery link is available below for local testing.'
                     : `If an account with that email or employee ID exists, we've sent a reset link. Check your inbox and spam folder.`}
                 </p>
 
@@ -109,7 +115,7 @@ export default function ForgotPasswordPage() {
                   </button>
                   <Link
                     href="/login"
-                    className="flex w-full items-center justify-center gap-2 rounded-2xl bg-brand-600 py-3 text-sm font-semibold text-white transition hover:bg-brand-500"
+                    className="flex w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-brand-600 via-violet-600 to-fuchsia-600 py-3 text-sm font-semibold text-white transition hover:from-brand-500 hover:via-violet-500 hover:to-fuchsia-500"
                   >
                     Back to Sign In
                   </Link>
@@ -118,8 +124,11 @@ export default function ForgotPasswordPage() {
             ) : (
               /* ── Request form ──────────────────────────────── */
               <>
-                <div className="mb-7">
-                  <p className="text-sm uppercase tracking-[0.22em] text-white/45">Account Recovery</p>
+                <div className="relative z-10 mb-7">
+                  <span className="galaxy-badge">
+                    <Sparkles className="h-3.5 w-3.5" />
+                    Account Recovery
+                  </span>
                   <h2 className="mt-3 font-display text-3xl font-bold text-white">Forgot password?</h2>
                   <p className="mt-2 text-sm leading-6 text-white/50">
                     Enter the email address or employee ID linked to your account. We'll send you a link to reset your password.
@@ -148,7 +157,7 @@ export default function ForgotPasswordPage() {
                   <button
                     type="submit"
                     disabled={submitting}
-                    className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-brand-600 px-5 py-3.5 text-sm font-semibold text-white transition hover:bg-brand-500 disabled:cursor-not-allowed disabled:opacity-60"
+                    className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-brand-600 via-violet-600 to-fuchsia-600 px-5 py-3.5 text-sm font-semibold text-white transition hover:from-brand-500 hover:via-violet-500 hover:to-fuchsia-500 disabled:cursor-not-allowed disabled:opacity-60"
                   >
                     {submitting ? (
                       <span className="h-5 w-5 animate-spin rounded-full border-2 border-white/30 border-t-white" />
@@ -168,6 +177,15 @@ export default function ForgotPasswordPage() {
                       <ArrowLeft className="h-3.5 w-3.5" />
                       Back to Sign In
                     </Link>
+                  </div>
+
+                  <div className="rounded-2xl border border-white/10 bg-white/[0.05] p-4">
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-white/35">
+                      Recovery notes
+                    </p>
+                    <p className="mt-2 text-xs leading-5 text-white/55">
+                      Reset links expire after one hour and are only sent to the email already mapped to the employee account.
+                    </p>
                   </div>
                 </form>
               </>

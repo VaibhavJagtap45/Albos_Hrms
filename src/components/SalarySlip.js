@@ -1,6 +1,5 @@
 'use client';
 
-import { useRef } from 'react';
 import { Download } from 'lucide-react';
 import companyLogoSrc from '@/assets/albos_technology.jpeg';
 import { formatCurrency, formatDate, getStatusTone } from '@/lib/utils';
@@ -360,17 +359,17 @@ export default function SalarySlip({ salary }) {
     <div className="glass-card overflow-hidden">
 
       {/* ── Header ─────────────────────────────────────────────────── */}
-      <div className="flex flex-col gap-4 border-b border-surface-200 bg-gradient-to-r from-[#1B2B5B] to-[#2d4a8a] px-6 py-5 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex flex-col gap-4 border-b border-white/10 bg-gradient-to-br from-[#1f0d35] via-[#5b21b6] to-[#312e81] px-6 py-6 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-4">
           {/* Company logo */}
           <img
             src={companyLogoSrc.src}
             alt="Albos Technology"
-            className="h-12 w-12 rounded-xl object-contain bg-white p-1 shadow"
+            className="h-14 w-14 rounded-2xl border border-white/10 bg-white/95 p-1.5 object-contain shadow-[0_14px_30px_rgba(15,23,42,0.18)]"
           />
           <div>
-            <p className="text-xs font-semibold uppercase tracking-widest text-white/60">Albos Technology Pvt. Ltd.</p>
-            <h3 className="font-display text-xl font-bold text-white">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.32em] text-white/60">Albos Technology Pvt. Ltd.</p>
+            <h3 className="mt-1 font-display text-2xl font-bold text-white">
               {emp.name || 'Employee'}
             </h3>
             <p className="mt-0.5 text-sm text-white/70">
@@ -378,16 +377,16 @@ export default function SalarySlip({ salary }) {
             </p>
           </div>
         </div>
-        <div className="flex flex-col items-start gap-2 sm:items-end">
+        <div className="flex flex-col items-start gap-3 sm:items-end">
           <div className="text-right">
-            <p className="text-xs text-white/60 uppercase tracking-wider">Salary Slip</p>
-            <p className="text-lg font-bold text-white">{monthName} {salary.year}</p>
+            <p className="text-[11px] uppercase tracking-[0.32em] text-white/60">Salary Slip</p>
+            <p className="mt-1 text-xl font-bold text-white">{monthName} {salary.year}</p>
           </div>
           <span className={`status-badge ${getStatusTone(salary.status)}`}>{salary.status}</span>
           <button
             type="button"
             onClick={handleDownloadPDF}
-            className="inline-flex items-center gap-2 rounded-xl bg-white/15 px-4 py-2 text-sm font-semibold text-white backdrop-blur transition hover:bg-white/25"
+            className="inline-flex items-center gap-2 rounded-2xl border border-white/10 bg-white/14 px-4 py-2.5 text-sm font-semibold text-white backdrop-blur transition hover:bg-white/22"
           >
             <Download className="h-4 w-4" />
             Download PDF
@@ -395,11 +394,11 @@ export default function SalarySlip({ salary }) {
         </div>
       </div>
 
-      <div className="p-6 space-y-6">
+      <div className="space-y-6 p-6 sm:p-7">
 
         {/* ── Attendance Summary ───────────────────────────────────── */}
         <div>
-          <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-surface-400">
+          <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.32em] text-purple-600">
             Attendance — {monthName} {salary.year}
           </p>
           <div className="grid grid-cols-3 gap-3 sm:grid-cols-6">
@@ -411,7 +410,7 @@ export default function SalarySlip({ salary }) {
               { label: 'Days Absent',     value: absent,    cls: 'text-red-600' },
               { label: 'Late Marks',      value: lateCount, cls: 'text-amber-600' },
             ].map(({ label, value, cls }) => (
-              <div key={label} className="rounded-2xl border border-surface-100 bg-surface-50 p-3 text-center">
+              <div key={label} className="rounded-[24px] border border-purple-100/80 bg-gradient-to-br from-white to-purple-50/70 p-3 text-center shadow-[0_8px_24px_rgba(76,29,149,0.05)]">
                 <p className="text-xs text-surface-400">{label}</p>
                 <p className={`mt-1 text-lg font-bold ${cls || 'text-gray-900'}`}>{value}</p>
               </div>
@@ -423,8 +422,8 @@ export default function SalarySlip({ salary }) {
         <div className="grid gap-4 lg:grid-cols-2">
 
           {/* Earnings */}
-          <div className="overflow-hidden rounded-2xl border border-surface-200">
-            <div className="bg-[#1B2B5B] px-4 py-2.5">
+          <div className="overflow-hidden rounded-[24px] border border-purple-100/80 bg-white/80">
+            <div className="bg-gradient-to-r from-[#2a1246] via-[#5b21b6] to-[#4338ca] px-4 py-3">
               <p className="text-xs font-bold uppercase tracking-wider text-white/80">Earnings</p>
             </div>
             <table className="w-full text-sm">
@@ -454,17 +453,17 @@ export default function SalarySlip({ salary }) {
                 )}
               </tbody>
               <tfoot>
-                <tr className="border-t-2 border-[#1B2B5B] bg-blue-50">
-                  <td className="px-4 py-3 font-bold text-[#1B2B5B]">Total Earnings</td>
-                  <td className="px-4 py-3 text-right font-bold text-[#1B2B5B]">{fmt(gross)}</td>
+                <tr className="border-t-2 border-violet-300 bg-violet-50">
+                  <td className="px-4 py-3 font-bold text-violet-900">Total Earnings</td>
+                  <td className="px-4 py-3 text-right font-bold text-violet-900">{fmt(gross)}</td>
                 </tr>
               </tfoot>
             </table>
           </div>
 
           {/* Deductions — all rows shown including ₹0 */}
-          <div className="overflow-hidden rounded-2xl border border-surface-200">
-            <div className="bg-red-700 px-4 py-2.5">
+          <div className="overflow-hidden rounded-[24px] border border-rose-100/90 bg-white/80">
+            <div className="bg-gradient-to-r from-rose-600 to-pink-600 px-4 py-3">
               <p className="text-xs font-bold uppercase tracking-wider text-white/80">Deductions</p>
             </div>
             <table className="w-full text-sm">
@@ -479,7 +478,7 @@ export default function SalarySlip({ salary }) {
                 ))}
               </tbody>
               <tfoot>
-                <tr className="border-t-2 border-red-300 bg-red-50">
+                <tr className="border-t-2 border-rose-300 bg-rose-50">
                   <td className="px-4 py-3 font-bold text-red-800">Total Deductions</td>
                   <td className="px-4 py-3 text-right font-bold text-red-800">{fmt(totalDed)}</td>
                 </tr>
@@ -490,28 +489,28 @@ export default function SalarySlip({ salary }) {
 
         {/* ── Net Payable Summary ──────────────────────────────────── */}
         <div className="grid gap-3 sm:grid-cols-3">
-          <div className="rounded-2xl border border-surface-200 bg-surface-50 p-4 text-center">
+          <div className="rounded-[24px] border border-purple-100/80 bg-gradient-to-br from-white to-purple-50/80 p-4 text-center">
             <p className="text-xs uppercase tracking-wider text-surface-400">Gross Earnings</p>
             <p className="mt-1 text-xl font-bold text-gray-900">{fmt(gross)}</p>
           </div>
-          <div className="rounded-2xl border border-red-100 bg-red-50 p-4 text-center">
+          <div className="rounded-[24px] border border-rose-100 bg-rose-50 p-4 text-center">
             <p className="text-xs uppercase tracking-wider text-red-400">Total Deductions</p>
             <p className="mt-1 text-xl font-bold text-red-700">{fmt(totalDed)}</p>
           </div>
-          <div className="rounded-2xl bg-[#1B2B5B] p-4 text-center shadow-md">
+          <div className="rounded-[24px] bg-gradient-to-r from-[#2a1246] via-[#5b21b6] to-[#4338ca] p-4 text-center shadow-[0_18px_40px_rgba(76,29,149,0.24)]">
             <p className="text-xs uppercase tracking-wider text-white/60">Net Payable</p>
             <p className="mt-1 font-display text-2xl font-bold text-white">{fmt(net)}</p>
           </div>
         </div>
 
         {/* ── Amount in Words ──────────────────────────────────────── */}
-        <div className="rounded-2xl border border-surface-200 bg-surface-50 px-4 py-3">
-          <span className="text-xs uppercase tracking-wider text-surface-400">Amount in Words: </span>
+        <div className="rounded-[24px] border border-purple-100/80 bg-gradient-to-r from-purple-50/80 to-white px-4 py-4">
+          <span className="text-xs uppercase tracking-wider text-purple-500">Amount in Words: </span>
           <span className="text-sm font-semibold text-gray-800 italic">{numberToWords(net)}</span>
         </div>
 
         {/* ── Footer ───────────────────────────────────────────────── */}
-        <div className="flex items-center justify-between border-t border-surface-100 pt-4 text-xs text-surface-400">
+        <div className="flex flex-col gap-3 border-t border-purple-100 pt-4 text-xs text-surface-400 sm:flex-row sm:items-center sm:justify-between">
           <div className="space-y-0.5">
             <p>Generated: {formatDate(salary.generatedAt || salary.createdAt)}</p>
             <p>Carry-forward late marks: <span className="font-semibold text-amber-600">{cfLate}</span></p>
