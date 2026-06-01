@@ -1120,11 +1120,7 @@ function HRAttendancePage() {
                 Monthly Import
               </button>
               <button
-                onClick={() => {
-                  setImportModal(true);
-                  setImportFile(null);
-                  setImportResult(null);
-                }}
+                onClick={openDailyModal}
                 className="inline-flex items-center gap-2 rounded-xl bg-white/10 px-4 py-2.5 text-sm font-semibold text-white backdrop-blur-sm transition hover:bg-white/20 active:scale-[0.98]"
               >
                 <Upload className="w-4 h-4" />
@@ -2035,6 +2031,170 @@ function HRAttendancePage() {
                 >
                   <Upload className="w-4 h-4" />
                   {monthlyImporting ? "Importing…" : "Import Monthly"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ═══════════════ DAILY DETAILED XLS IMPORT MODAL ═══════════════ */}
+      {dailyModal && (
+        <div
+          className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+          onClick={() => setDailyModal(false)}
+        >
+          <div
+            className="bg-white rounded-[28px] w-full max-w-lg shadow-xl overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <ModalHeader
+              title="Daily Attendance Import"
+              description="Upload the Date wise Daily Attendance Report (Detailed) XLS"
+              onClose={() => setDailyModal(false)}
+              gradient="from-fuchsia-600 to-purple-700"
+            />
+
+            <div className="p-6 space-y-4">
+              <div className="bg-fuchsia-50 border border-fuchsia-200 rounded-xl p-4 text-xs text-fuchsia-700 space-y-1">
+                <p className="font-semibold text-fuchsia-800 mb-1">
+                  Supported format:
+                </p>
+                <p>
+                  • Header row:{" "}
+                  <span className="font-mono">
+                    EMP Code · Card No · Emp Name · In Time · Out Time · Status
+                  </span>
+                </p>
+                <p>
+                  • Report date is read from the{" "}
+                  <span className="font-mono">Date : DD/MM/YYYY</span> metadata
+                  cell
+                </p>
+                <p>
+                  • Status: <span className="font-mono">P</span> present ·{" "}
+                  <span className="font-mono">MIS</span> missing punch ·{" "}
+                  <span className="font-mono">A</span> absent ·{" "}
+                  <span className="font-mono">WO</span> skipped
+                </p>
+              </div>
+
+              <div
+                className={`border-2 border-dashed rounded-xl p-8 text-center cursor-pointer transition-all ${
+                  dailyDragOver
+                    ? "border-fuchsia-500 bg-fuchsia-50/60"
+                    : "border-purple-200 hover:border-purple-400 hover:bg-purple-50/30"
+                }`}
+                onClick={() => dailyFileRef.current?.click()}
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  setDailyDragOver(true);
+                }}
+                onDragLeave={() => setDailyDragOver(false)}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  setDailyDragOver(false);
+                  acceptDailyFile(e.dataTransfer.files?.[0]);
+                }}
+              >
+                <input
+                  ref={dailyFileRef}
+                  type="file"
+                  accept=".xls,.xlsx"
+                  className="hidden"
+                  onChange={(e) => acceptDailyFile(e.target.files?.[0])}
+                />
+                {dailyFile ? (
+                  <div className="flex items-center justify-center gap-3">
+                    <FileText className="w-6 h-6 text-fuchsia-600" />
+                    <div className="text-left">
+                      <p className="text-sm font-semibold text-gray-900">
+                        {dailyFile.name}
+                      </p>
+                      <p className="text-xs text-surface-400">
+                        {(dailyFile.size / 1024).toFixed(1)} KB — click to
+                        change
+                      </p>
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    <Upload className="w-8 h-8 text-surface-300 mx-auto mb-2" />
+                    <p className="text-sm text-surface-400">
+                      Click or drop the XLS here
+                    </p>
+                    <p className="text-xs text-surface-300 mt-1">
+                      XLS · XLSX · Max 10 MB
+                    </p>
+                  </>
+                )}
+              </div>
+
+              {dailyResult && (
+                <div
+                  className={`rounded-xl p-4 border ${dailyResult.inserted > 0 ? "bg-green-50 border-green-200" : "bg-amber-50 border-amber-200"}`}
+                >
+                  <p className="font-semibold text-sm text-gray-900 mb-3">
+                    {dailyResult.message}
+                  </p>
+                  <div className="grid grid-cols-3 gap-3 text-center mb-3">
+                    {[
+                      ["Inserted", dailyResult.inserted, "text-green-700"],
+                      ["Skipped", dailyResult.skipped, "text-amber-700"],
+                      ["Unmapped", dailyResult.unmapped, "text-red-700"],
+                    ].map(([l, v, c]) => (
+                      <div key={l}>
+                        <p className={`text-xl font-bold ${c}`}>{v}</p>
+                        <p className="text-xs text-surface-500">{l}</p>
+                      </div>
+                    ))}
+                  </div>
+                  {dailyResult.unmappedIds?.length > 0 && (
+                    <p className="text-xs text-amber-700 flex gap-2 items-start">
+                      <AlertCircle className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
+                      <span>
+                        Unmapped Emp Codes / Cards:{" "}
+                        <span className="font-mono">
+                          {dailyResult.unmappedIds.join(", ")}
+                        </span>{" "}
+                        — set Card No / Fingerprint ID in Employees
+                      </span>
+                    </p>
+                  )}
+                  {dailyResult.errors?.length > 0 && (
+                    <details className="mt-2">
+                      <summary className="text-xs text-red-600 cursor-pointer">
+                        Show errors ({dailyResult.errors.length})
+                      </summary>
+                      <ul className="mt-1 space-y-0.5">
+                        {dailyResult.errors.map((e, i) => (
+                          <li
+                            key={i}
+                            className="text-xs text-red-600 font-mono"
+                          >
+                            {e}
+                          </li>
+                        ))}
+                      </ul>
+                    </details>
+                  )}
+                </div>
+              )}
+
+              <div className="flex gap-3 justify-end">
+                <button
+                  onClick={() => setDailyModal(false)}
+                  className="btn-secondary text-sm"
+                >
+                  Close
+                </button>
+                <button
+                  onClick={handleDailyImport}
+                  disabled={!dailyFile || dailyImporting}
+                  className="btn-primary text-sm"
+                >
+                  <Upload className="w-4 h-4" />
+                  {dailyImporting ? "Importing…" : "Import Daily"}
                 </button>
               </div>
             </div>

@@ -63,7 +63,7 @@ function CreateModal({ employees, onClose, onDone }) {
         </div>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-surface-500">
+            <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-surface-500 ">
               Title
             </label>
             <input
@@ -306,7 +306,7 @@ export default function NoticesPage() {
   return (
     <AppShell>
       <div className="mx-auto  space-y-3">
-        <PageHeader
+        {/* <PageHeader
           title="Notices"
           description={
             isHR
@@ -323,6 +323,31 @@ export default function NoticesPage() {
                     className="btn-primary text-sm"
                   >
                     <Plus className="h-4 w-4" />
+                    New Notice
+                  </button>,
+                ]
+              : undefined
+          }
+        /> */}
+        <PageHeader
+          title="Notices"
+          titleClassName="text-white"
+          description={
+            isHR
+              ? "Create and manage company-wide and individual notices."
+              : "Stay updated with announcements from HR."
+          }
+          descriptionClassName="text-white"
+          actions={
+            isHR
+              ? [
+                  <button
+                    key="create"
+                    type="button"
+                    onClick={() => setShowCreate(true)}
+                    className="btn-primary text-sm text-white"
+                  >
+                    <Plus className="h-4 w-4 text-white" />
                     New Notice
                   </button>,
                 ]
