@@ -126,6 +126,44 @@ export function getLeaveTypeLabel(type) {
   return labels[type] || type || '-';
 }
 
+// Attendance regularization reason categories (must mirror the backend enum in
+// utils/constants.js → REGULARIZATION_CATEGORIES).
+export const REGULARIZATION_CATEGORIES = [
+  { value: 'missed-punch', label: 'Missed Punch' },
+  { value: 'forgot-punch', label: 'Forgot to Punch' },
+  { value: 'wrong-punch', label: 'Wrong Punch' },
+  { value: 'on-duty', label: 'On Duty' },
+  { value: 'wfh', label: 'Work From Home' },
+  { value: 'half-day', label: 'Half Day' },
+  { value: 'other', label: 'Other' },
+];
+
+// How far back (days) an employee may regularize — mirrors the backend window.
+export const REGULARIZATION_WINDOW_DAYS = 30;
+
+export function getRegularizationCategoryLabel(value) {
+  return (
+    REGULARIZATION_CATEGORIES.find((category) => category.value === value)
+      ?.label || 'Other'
+  );
+}
+
+// Which attendance status a category resolves to once approved (mirrors the
+// backend REGULARIZATION_OUTCOME_BY_CATEGORY map).
+const REGULARIZATION_OUTCOME_BY_CATEGORY = {
+  'missed-punch': 'Present',
+  'forgot-punch': 'Present',
+  'wrong-punch': 'Present',
+  'on-duty': 'On Duty',
+  wfh: 'Work From Home',
+  'half-day': 'Half Day',
+  other: 'Present',
+};
+
+export function getRegularizationOutcomeLabel(category) {
+  return REGULARIZATION_OUTCOME_BY_CATEGORY[category] || 'Present';
+}
+
 export function getHolidayTypeLabel(type) {
   return type === 'company' ? 'Company Holiday' : 'National Holiday';
 }
@@ -145,6 +183,8 @@ export function getStatusTone(status) {
     late: 'bg-amber-100 text-amber-700',
     leave: 'bg-blue-100 text-blue-700',
     'half-day': 'bg-purple-100 text-purple-700',
+    wfh: 'bg-cyan-100 text-cyan-700',
+    'on-duty': 'bg-indigo-100 text-indigo-700',
     holiday: 'bg-surface-100 text-surface-500',
     absent: 'bg-red-100 text-red-700',
     success: 'bg-green-100 text-green-700',
@@ -184,7 +224,16 @@ export function getAttendanceSummary(records = []) {
       summary[status] = (summary[status] || 0) + 1;
       return summary;
     },
-    { present: 0, late: 0, leave: 0, absent: 0, 'half-day': 0, holiday: 0 },
+    {
+      present: 0,
+      late: 0,
+      leave: 0,
+      absent: 0,
+      'half-day': 0,
+      holiday: 0,
+      wfh: 0,
+      'on-duty': 0,
+    },
   );
 }
 

@@ -1,6 +1,6 @@
 ﻿'use client';
 
-import { CalendarDays } from 'lucide-react';
+import { CalendarDays, CalendarPlus, Clock } from 'lucide-react';
 import {
   buildCalendarDays,
   classNames,
@@ -20,6 +20,8 @@ const CELL_STYLES = {
   holiday: 'bg-slate-100 text-slate-600 ring-1 ring-slate-200',
   absent: 'bg-red-50 text-red-700 ring-1 ring-red-200',
   'half-day': 'bg-purple-50 text-purple-700 ring-1 ring-purple-200',
+  wfh: 'bg-cyan-50 text-cyan-700 ring-1 ring-cyan-200',
+  'on-duty': 'bg-indigo-50 text-indigo-700 ring-1 ring-indigo-200',
   weekoff: 'bg-white text-surface-300 ring-1 ring-surface-100',
   future: 'bg-white text-surface-300 ring-1 ring-surface-100',
 };
@@ -43,6 +45,7 @@ export default function AttendanceCalendar({
   holidays = [],
   selectedDate,
   onSelectDate,
+  onRequest,
 }) {
   const cells = buildCalendarDays(year, month);
   const recordsByDate = new Map(records.map((record) => [String(record.date).split('T')[0], record]));
@@ -53,6 +56,16 @@ export default function AttendanceCalendar({
   const detailRecord = selectedDate ? recordsByDate.get(selectedIso) : null;
   const detailHoliday = selectedDate ? holidaysByDate.get(selectedIso) : null;
   const detailState = selectedDate ? getCellState(selectedDate, recordsByDate, holidaysByDate) : null;
+
+  // An employee may request to be marked present only on a past/today working
+  // day where they are currently absent (no record). Leave can be applied for
+  // any working day that is not already a holiday / weekly off / leave.
+  const canRequestPresent = Boolean(selectedDate) && detailState === 'absent';
+  const canRequestLeave =
+    Boolean(selectedDate) &&
+    !['holiday', 'weekoff', 'leave', 'half-day', 'wfh', 'on-duty'].includes(
+      detailState,
+    );
 
   return (
     <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_320px]">
@@ -197,6 +210,34 @@ export default function AttendanceCalendar({
                   No attendance record was found for this day.
                 </p>
               )}
+
+              {onRequest && (canRequestPresent || canRequestLeave) ? (
+                <div className="space-y-2 border-t border-surface-100 pt-4">
+                  <p className="text-xs uppercase tracking-wider text-surface-400">
+                    Raise a request
+                  </p>
+                  {canRequestPresent ? (
+                    <button
+                      type="button"
+                      onClick={() => onRequest(selectedDate, 'present')}
+                      className="flex w-full items-center justify-center gap-2 rounded-2xl border border-green-200 bg-green-50 px-4 py-2.5 text-sm font-semibold text-green-700 transition hover:bg-green-100"
+                    >
+                      <CalendarPlus className="h-4 w-4" />
+                      Request Present
+                    </button>
+                  ) : null}
+                  {canRequestLeave ? (
+                    <button
+                      type="button"
+                      onClick={() => onRequest(selectedDate, 'leave')}
+                      className="flex w-full items-center justify-center gap-2 rounded-2xl border border-blue-200 bg-blue-50 px-4 py-2.5 text-sm font-semibold text-blue-700 transition hover:bg-blue-100"
+                    >
+                      <Clock className="h-4 w-4" />
+                      Apply for Leave
+                    </button>
+                  ) : null}
+                </div>
+              ) : null}
             </div>
           ) : (
             <p className="mt-4 rounded-2xl bg-surface-50 p-4 text-sm text-surface-400">

@@ -3,9 +3,19 @@ import axios from "axios";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "/api/v1";
 
+// The backend runs on Render's free tier, which sleeps after ~15 min idle. The
+// first request then waits 30-50s while the instance wakes, and Render's router
+// can briefly return 502/503 during that window. We tolerate this with a long
+// timeout + automatic retries on transient errors, plus a warm-up ping (below).
+const REQUEST_TIMEOUT_MS = 45_000;
+const MAX_RETRIES = 3;
+const RETRY_DELAY_MS = 2_500;
+const RETRYABLE_STATUS = new Set([502, 503, 504]);
+
 const api = axios.create({
   baseURL: API_BASE,
   withCredentials: true,
+  timeout: REQUEST_TIMEOUT_MS,
   headers: {
     "Content-Type": "application/json",
   },
@@ -21,9 +31,32 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
+// A transient failure is a cold-start symptom: no HTTP response (network error
+// or timeout) OR a gateway status. A real 4xx (e.g. 401 bad password) is NOT
+// retried — it's a genuine answer from the server.
+function isTransientError(error) {
+  if (error.response) return RETRYABLE_STATUS.has(error.response.status);
+  // No response: network error, CORS failure, or timeout (ECONNABORTED).
+  return true;
+}
+
+const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
 api.interceptors.response.use(
   (response) => response,
-  (error) => {
+  async (error) => {
+    const config = error.config;
+
+    // Retry cold-start / gateway hiccups a few times before giving up.
+    if (config && !config.__noRetry && isTransientError(error)) {
+      config.__retryCount = config.__retryCount || 0;
+      if (config.__retryCount < MAX_RETRIES) {
+        config.__retryCount += 1;
+        await delay(RETRY_DELAY_MS);
+        return api(config);
+      }
+    }
+
     const shouldRedirect =
       error.response?.status === 401 &&
       typeof window !== "undefined" &&
@@ -39,6 +72,19 @@ api.interceptors.response.use(
     return Promise.reject(error);
   },
 );
+
+// Fire-and-forget ping to wake the Render instance. Call this as early as
+// possible (e.g. when the login page mounts) so the backend is already awake by
+// the time the user submits credentials. Never throws and never redirects.
+export function warmUpBackend() {
+  api
+    .get("/health", {
+      __noRetry: true,
+      timeout: 60_000,
+      skipAuthRedirect: true,
+    })
+    .catch(() => {});
+}
 
 function createMultipartRequest(path, file) {
   const form = new FormData();

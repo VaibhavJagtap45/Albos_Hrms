@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
+    "package:cyberpanel": "powershell -ExecutionPolicy Bypass -File scripts/package-static.ps1",
     "start": "next start"
   },
   "dependencies": {

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState, useCallback } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import toast from 'react-hot-toast';
@@ -20,7 +20,7 @@ import {
   Sparkles,
 } from 'lucide-react';
 import { useAuth } from '@/lib/auth';
-import { authAPI } from '@/lib/api';
+import { authAPI, warmUpBackend } from '@/lib/api';
 import StarField from '@/components/StarField';
 import PasswordStrength, { MIN_PASSWORD_LENGTH } from '@/components/PasswordStrength';
 
@@ -114,6 +114,7 @@ export default function LoginPage() {
   const [password, setPassword]         = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [submitting, setSubmitting]     = useState(false);
+  const [wakingServer, setWakingServer] = useState(false);
 
   // Forgot / OTP flow
   const [forgotId, setForgotId]               = useState('');
@@ -127,10 +128,6 @@ export default function LoginPage() {
   const [showConfirm, setShowConfirm]         = useState(false);
   const [resettingPass, setResettingPass]     = useState(false);
 
-  // Resend cooldown
-  const [resendCooldown, setResendCooldown] = useState(0);
-  const cooldownRef = useRef(null);
-
   const { login, user, loading } = useAuth();
   const router = useRouter();
 
@@ -138,17 +135,11 @@ export default function LoginPage() {
     if (!loading && user) router.replace('/dashboard');
   }, [loading, router, user]);
 
-  const startCooldown = useCallback(() => {
-    setResendCooldown(60);
-    cooldownRef.current = setInterval(() => {
-      setResendCooldown((c) => {
-        if (c <= 1) { clearInterval(cooldownRef.current); return 0; }
-        return c - 1;
-      });
-    }, 1000);
+  // Wake the Render free-tier backend immediately so the first sign-in isn't
+  // stuck behind a 30-50s cold start.
+  useEffect(() => {
+    warmUpBackend();
   }, []);
-
-  useEffect(() => () => clearInterval(cooldownRef.current), []);
 
   // ── Handlers ───────────────────────────────────────────────────────────────
   const handleLogin = async (e) => {
@@ -156,13 +147,23 @@ export default function LoginPage() {
     const id = identifier.trim();
     if (!id || !password) { toast.error('Enter your email / employee ID and password.'); return; }
     setSubmitting(true);
+    // If the request runs long, it's almost certainly the Render cold start —
+    // reassure the user instead of letting the button spin silently.
+    const wakeTimer = setTimeout(() => setWakingServer(true), 5000);
     try {
       const u = await login(id, password);
       toast.success(`Welcome back, ${u.name}`);
       router.push('/dashboard');
     } catch (err) {
-      toast.error(err.response?.data?.message || 'Unable to sign in. Check your credentials.');
+      const message =
+        err.response?.data?.message ||
+        (err.response
+          ? 'Unable to sign in. Check your credentials.'
+          : 'Could not reach the server. It may be waking up — please try again in a moment.');
+      toast.error(message);
     } finally {
+      clearTimeout(wakeTimer);
+      setWakingServer(false);
       setSubmitting(false);
     }
   };
@@ -177,7 +178,6 @@ export default function LoginPage() {
       if (data._dev_otp) toast(`Dev OTP: ${data._dev_otp}`, { icon: '🔑', duration: 10000 });
       setOtp('');
       setView(VIEW.VERIFY_OTP);
-      startCooldown();
       toast.success('OTP sent to your registered email.');
     } catch (err) {
       toast.error(err.response?.data?.message || 'Failed to send OTP. Try again.');
@@ -364,6 +364,13 @@ export default function LoginPage() {
                             : <> Sign In <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" /> </>}
                         </button>
                       </div>
+
+                      {wakingServer && submitting && (
+                        <p className="flex items-center justify-center gap-2 text-center text-xs text-amber-300/80" style={{ animation: 'fadeIn 0.3s ease-out' }}>
+                          <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                          Waking the secure server… the first sign-in after idle can take up to a minute.
+                        </p>
+                      )}
                     </form>
 
                     <div className="mt-5 rounded-2xl border border-white/[0.06] bg-white/[0.03] p-4" style={{ animation: 'slideUp 0.4s ease-out 0.54s both' }}>
@@ -450,17 +457,11 @@ export default function LoginPage() {
 
                       {/* Resend */}
                       <div className="text-center">
-                        {resendCooldown > 0 ? (
-                          <p className="text-xs text-white/30">
-                            Resend OTP in <span className="font-semibold text-white/50">{resendCooldown}s</span>
-                          </p>
-                        ) : (
-                          <button type="button" onClick={handleSendOtp} disabled={sendingOtp}
-                            className="inline-flex items-center gap-1.5 text-xs text-brand-400/80 transition hover:text-brand-300 disabled:opacity-50">
-                            <RefreshCw className={`h-3.5 w-3.5 ${sendingOtp ? 'animate-spin' : ''}`} />
-                            Resend OTP
-                          </button>
-                        )}
+                        <button type="button" onClick={handleSendOtp} disabled={sendingOtp}
+                          className="inline-flex items-center gap-1.5 text-xs text-brand-400/80 transition hover:text-brand-300 disabled:opacity-50">
+                          <RefreshCw className={`h-3.5 w-3.5 ${sendingOtp ? 'animate-spin' : ''}`} />
+                          Resend OTP
+                        </button>
                       </div>
                     </form>
                   </div>

@@ -1,0 +1,62 @@
+# ============================================================================
+# Next.js static export (output: "export", trailingSlash: true)
+# Target: CyberPanel / OpenLiteSpeed / Apache
+# ============================================================================
+
+# ---- Routing ---------------------------------------------------------------
+# trailingSlash:true emits /route/index.html, so DirectoryIndex handles most
+# requests. The rewrite below is a fallback for clean URLs without a slash.
+ErrorDocument 404 /404/index.html
+DirectoryIndex index.html
+
+RewriteEngine On
+
+# Force HTTPS. Remove this block if the site is ever served over plain HTTP,
+# or if a CDN/proxy in front already terminates SSL and causes redirect loops.
+RewriteCond %{HTTPS} !=on
+RewriteCond %{HTTP:X-Forwarded-Proto} !https
+RewriteRule ^ https://%{HTTP_HOST}%{REQUEST_URI} [R=301,L]
+
+# Serve existing files and folders directly (index.html, _next assets, routes)
+RewriteCond %{REQUEST_FILENAME} -f [OR]
+RewriteCond %{REQUEST_FILENAME} -d
+RewriteRule ^ - [L]
+
+# Map clean routes to their exported index.html (e.g. /login -> /login/index.html)
+RewriteRule ^([^.]+?)/?$ /$1/index.html [L]
+
+# ---- Compression -----------------------------------------------------------
+# (OpenLiteSpeed may compress automatically; these directives are a safe no-op
+#  there and the real thing on Apache.)
+<IfModule mod_deflate.c>
+  AddOutputFilterByType DEFLATE text/html text/plain text/css text/xml \
+    text/javascript application/javascript application/x-javascript \
+    application/json application/xml image/svg+xml font/ttf font/otf \
+    font/woff font/woff2
+</IfModule>
+
+# ---- Caching & security headers --------------------------------------------
+<IfModule mod_headers.c>
+  # Build assets are content-hashed by Next.js -> safe to cache for a year.
+  <FilesMatch "\.(js|css|woff2?|ttf|otf|eot)$">
+    Header set Cache-Control "public, max-age=31536000, immutable"
+  </FilesMatch>
+
+  # Images/icons live in /public and may be replaced under the same name -> 30d.
+  <FilesMatch "\.(png|jpe?g|gif|webp|avif|svg|ico)$">
+    Header set Cache-Control "public, max-age=2592000"
+  </FilesMatch>
+
+  # HTML must always revalidate so a new deploy is picked up immediately.
+  <FilesMatch "\.html$">
+    Header set Cache-Control "public, max-age=0, must-revalidate"
+  </FilesMatch>
+
+  # Security headers
+  Header always set X-Content-Type-Options "nosniff"
+  Header always set X-Frame-Options "SAMEORIGIN"
+  Header always set Referrer-Policy "strict-origin-when-cross-origin"
+  Header always set Permissions-Policy "geolocation=(), microphone=(), camera=()"
+  # Enable HSTS only once every subdomain is permanently HTTPS-only:
+  # Header always set Strict-Transport-Security "max-age=31536000; includeSubDomains"
+</IfModule>

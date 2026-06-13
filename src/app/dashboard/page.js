@@ -176,6 +176,7 @@ export default function DashboardPage() {
     employeeStats: null,
     attendanceStats: null,
     pendingLeaves: [],
+    pendingRegularizations: [],
     salaries: [],
     notices: [],
     holidays: [],
@@ -184,6 +185,7 @@ export default function DashboardPage() {
     profile: null,
     attendance: null,
     leaves: [],
+    regularizations: [],
     notices: [],
     holidays: [],
   });
@@ -196,11 +198,12 @@ export default function DashboardPage() {
     setLoading(true);
     try {
       if (isHR) {
-        const [employeeStatsRes, attendanceStatsRes, pendingLeavesRes, payrollRes, noticesRes, holidaysRes] =
+        const [employeeStatsRes, attendanceStatsRes, pendingLeavesRes, regularizationsRes, payrollRes, noticesRes, holidaysRes] =
           await Promise.all([
             employeeAPI.stats(),
             attendanceAPI.stats(),
             leaveAPI.list({ status: 'pending' }),
+            attendanceAPI.listCorrectionRequests({ status: 'pending' }),
             payrollAPI.list({ month: currentMonth, year: currentYear }),
             noticeAPI.list(),
             holidayAPI.list({ month: currentMonth, year: currentYear }),
@@ -210,6 +213,7 @@ export default function DashboardPage() {
           employeeStats: employeeStatsRes.data,
           attendanceStats: attendanceStatsRes.data,
           pendingLeaves: pendingLeavesRes.data.leaves,
+          pendingRegularizations: regularizationsRes.data.requests || [],
           salaries: payrollRes.data.salaries,
           notices: noticesRes.data.notices,
           holidays: holidaysRes.data.holidays,
@@ -217,10 +221,11 @@ export default function DashboardPage() {
         return;
       }
 
-      const [profileRes, attendanceRes, leavesRes, noticesRes, holidaysRes] = await Promise.all([
+      const [profileRes, attendanceRes, leavesRes, regularizationsRes, noticesRes, holidaysRes] = await Promise.all([
         employeeAPI.getMe(),
         attendanceAPI.getMyMonth(currentMonth, currentYear),
         leaveAPI.my(),
+        attendanceAPI.getMyCorrectionRequests(),
         noticeAPI.my(),
         holidayAPI.list({ month: currentMonth, year: currentYear }),
       ]);
@@ -229,6 +234,7 @@ export default function DashboardPage() {
         profile: profileRes.data.employee,
         attendance: attendanceRes.data,
         leaves: leavesRes.data.leaves,
+        regularizations: regularizationsRes.data.requests || [],
         notices: noticesRes.data.notices,
         holidays: holidaysRes.data.holidays,
       });
@@ -247,13 +253,17 @@ export default function DashboardPage() {
   const employeeSummary = getAttendanceSummary(employeeData.attendance?.records || []);
   const unreadNotices = employeeData.notices.filter((n) => !n.isRead).length;
   const pendingLeaves = employeeData.leaves.filter((l) => l.status === 'pending').length;
+  const pendingRegularizations = employeeData.regularizations.filter((r) => r.status === 'pending').length;
   const finalisedPayrollCount = hrData.salaries.filter((s) => s.status === 'finalised').length;
-  const totalAttendanceDays =
+  // WFH / On-Duty count as present (paid working) days.
+  const presentDays =
     employeeSummary.present +
     employeeSummary.late +
     employeeSummary['half-day'] +
-    employeeSummary.absent +
-    employeeSummary.leave;
+    (employeeSummary.wfh || 0) +
+    (employeeSummary['on-duty'] || 0);
+  const totalAttendanceDays =
+    presentDays + employeeSummary.absent + employeeSummary.leave;
 
   return (
     <AppShell>
@@ -322,7 +332,7 @@ export default function DashboardPage() {
         {isHR ? (
           <>
             {/* Stat grid */}
-            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
               <GradientStatCard
                 icon={Users}
                 gradient={STAT_GRADIENTS.purple}
@@ -344,6 +354,14 @@ export default function DashboardPage() {
                 value={hrData.pendingLeaves.length}
                 subtext="Awaiting HR decision"
                 badge={hrData.pendingLeaves.length > 0 ? '!' : null}
+              />
+              <GradientStatCard
+                icon={Clock}
+                gradient={STAT_GRADIENTS.cyan}
+                label="Pending Regularizations"
+                value={hrData.pendingRegularizations.length}
+                subtext="Attendance requests to review"
+                badge={hrData.pendingRegularizations.length > 0 ? '!' : null}
               />
               <GradientStatCard
                 icon={ReceiptText}
@@ -503,12 +521,12 @@ export default function DashboardPage() {
           /* ── Employee view ───────────────────────────────────── */
           <>
             {/* Stat grid */}
-            <div className="grid gap-4 sm:grid-cols-3">
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
               <GradientStatCard
                 icon={CalendarCheck}
                 gradient={STAT_GRADIENTS.emerald}
                 label="Days Present"
-                value={employeeSummary.present + employeeSummary.late + employeeSummary['half-day']}
+                value={presentDays}
                 subtext={`Attendance for ${monthLabel}`}
               />
               <GradientStatCard
@@ -517,6 +535,14 @@ export default function DashboardPage() {
                 label="Leave Balance"
                 value={employeeData.profile?.leaveBalance ?? user?.leaveBalance ?? 0}
                 subtext={`${pendingLeaves} request(s) pending`}
+              />
+              <GradientStatCard
+                icon={Clock}
+                gradient={STAT_GRADIENTS.cyan}
+                label="Pending Regularizations"
+                value={pendingRegularizations}
+                subtext="Attendance requests awaiting HR"
+                badge={pendingRegularizations > 0 ? pendingRegularizations : null}
               />
               <GradientStatCard
                 icon={Bell}

@@ -1,1065 +1,426 @@
 "use client";
-import { useState, useEffect, useCallback, useRef } from "react";
-import AppShell from "@/components/AppShell";
-import AttendanceCalendar from "@/components/AttendanceCalendar";
-import EmptyState from "@/components/EmptyState";
-import { useAuth } from "@/lib/auth";
-import { attendanceAPI, employeeAPI } from "@/lib/api";
+
+import { useEffect, useRef, useState } from "react";
 import toast from "react-hot-toast";
 import {
   AlertCircle,
-  ArrowLeft,
-  ArrowRight,
   CalendarCheck,
   CheckCircle2,
-  ChevronDown,
   ChevronLeft,
   ChevronRight,
   Clock,
   Download,
-  Edit2,
   FileText,
-  History,
+  FileUp,
   Plus,
   Trash2,
   Upload,
   X,
 } from "lucide-react";
+import AppShell from "@/components/AppShell";
+import AttendanceCalendar from "@/components/AttendanceCalendar";
+import EmptyState from "@/components/EmptyState";
+import PageHeader from "@/components/PageHeader";
+import StatCard from "@/components/StatCard";
+import { useAuth } from "@/lib/auth";
+import { attendanceAPI, employeeAPI, leaveAPI } from "@/lib/api";
 import {
   formatDate,
   getMonthLabel,
   getMonthOptions,
+  getRegularizationCategoryLabel,
+  getRegularizationOutcomeLabel,
   getStatusTone,
   getYearOptions,
+  REGULARIZATION_CATEGORIES,
+  REGULARIZATION_WINDOW_DAYS,
   shiftMonth,
+  toIsoDate,
 } from "@/lib/utils";
 
-// ── Constants ────────────────────────────────────────────────────────────────
-const PUNCH_STATUS_OPTIONS = [
-  "check-in",
-  "check-out",
-  "break-out",
-  "break-in",
-  "overtime-in",
-  "overtime-out",
+// ── Constants ─────────────────────────────────────────────────────────────────
+const STATUS_OPTIONS = [
+  "present",
+  "late",
+  "leave",
+  "half-day",
+  "wfh",
+  "on-duty",
+  "absent",
 ];
-const PUNCH_STATUS_COLORS = {
-  "check-in": "bg-green-100 text-green-700",
-  "check-out": "bg-blue-100 text-blue-700",
-  "break-out": "bg-amber-100 text-amber-700",
-  "break-in": "bg-amber-100 text-amber-700",
-  "overtime-in": "bg-purple-100 text-purple-700",
-  "overtime-out": "bg-purple-100 text-purple-700",
-};
-const SOURCE_BADGE = {
-  manual: "bg-brand-100 text-brand-700",
-  "csv-import": "bg-surface-100 text-surface-500",
-  "excel-upload": "bg-surface-100 text-surface-500",
-};
 
-const toDateStr = (d) => d.toISOString().split("T")[0];
-const toTimeStr = (d) =>
-  `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
-const fmtTime = (ts) =>
-  new Date(ts).toLocaleTimeString("en-IN", {
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: true,
-  });
-const fmtDate = (ts) =>
-  new Date(ts).toLocaleDateString("en-IN", {
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-  });
-const fmtDT = (ts) =>
-  new Date(ts).toLocaleString("en-IN", {
-    day: "2-digit",
-    month: "short",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-
-const EMPTY_PUNCH = {
+const EMPTY_FORM = {
   employeeId: "",
-  date: toDateStr(new Date()),
-  time: toTimeStr(new Date()),
-  status: "check-in",
+  date: toIsoDate(new Date()),
+  status: "present",
+  checkIn: "",
+  checkOut: "",
   note: "",
 };
 
-const STATUS_TONE = {
-  present: "bg-green-100 text-green-700",
-  late: "bg-amber-100 text-amber-700",
-  absent: "bg-red-100 text-red-700",
-  leave: "bg-blue-100 text-blue-700",
-  "half-day": "bg-purple-100 text-purple-700",
-  holiday: "bg-surface-100 text-surface-500",
-  pending: "bg-amber-100 text-amber-700",
-  approved: "bg-green-100 text-green-700",
-  rejected: "bg-red-100 text-red-700",
-};
+// Import type descriptors – used to build the type-selector cards in the modal
+const IMPORT_TYPES = [
+  {
+    id: "daily",
+    label: "Daily Biometric XLS",
+    icon: FileText,
+    description:
+      "Date-wise detailed report exported from fingerprint / ESSL devices. Contains EMP Code, Card No, In Time, Out Time and Status columns.",
+    hint: "Upload the .xls file as downloaded from your biometric device.",
+    needsMonth: false,
+  },
+  {
+    id: "monthly",
+    label: "Monthly Pivot Excel",
+    icon: CalendarCheck,
+    description:
+      "Pivot-style monthly sheet where each row is an employee and each column is a day (1–31) with check-in / check-out times.",
+    hint: "Select the correct month & year that this file covers.",
+    needsMonth: true,
+  },
+  {
+    id: "standard",
+    label: "Standard CSV / Excel",
+    icon: Upload,
+    description:
+      "Generic import with explicit columns: Employee ID, Date, Check In, Check Out (or Timestamp + Direction for punch logs).",
+    hint: "Supports .csv, .xlsx and .xls files with flexible column names.",
+    needsMonth: false,
+  },
+];
 
-const EMPTY_CORRECTION = {
-  requestedCheckIn: "",
-  requestedCheckOut: "",
-  reason: "",
-};
-
-// ── Reusable UI Components ────────────────────────────────────────────────────
-function GradientStatCard({ icon: Icon, label, value, subtext, gradient }) {
+// ── Shared card wrapper ───────────────────────────────────────────────────────
+function Card({ title, description, children, action }) {
   return (
-    <div
-      className={`relative overflow-hidden rounded-2xl bg-gradient-to-br ${gradient} p-5 text-white purple-glow`}
-    >
-      <div className="pointer-events-none absolute -right-4 -top-4 h-24 w-24 rounded-full bg-white/10" />
-      <div className="relative z-10">
-        <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-2xl bg-white/20 backdrop-blur-sm">
-          <Icon className="h-5 w-5 text-white" />
-        </div>
-        <p className="font-display text-3xl font-bold text-white">{value}</p>
-        <p className="mt-1 text-sm font-medium text-white/90">{label}</p>
-        {subtext && <p className="mt-0.5 text-xs text-white/60">{subtext}</p>}
-      </div>
-    </div>
-  );
-}
-
-function ModalHeader({
-  title,
-  description,
-  onClose,
-  gradient = "from-violet-600 to-purple-700",
-}) {
-  return (
-    <div
-      className={`relative overflow-hidden rounded-t-[28px] bg-gradient-to-br ${gradient} px-6 py-5`}
-    >
-      <div className="pointer-events-none absolute -right-6 -top-6 h-24 w-24 rounded-full bg-white/10" />
-      <div className="relative z-10 flex items-start justify-between gap-4">
+    <div className="glass-card p-5">
+      <div className="mb-4 flex items-start justify-between gap-4">
         <div>
-          <h3 className="font-display text-xl font-bold text-white">{title}</h3>
-          {description && (
-            <p className="mt-1 text-sm text-white/70">{description}</p>
-          )}
+          <h3 className="font-display text-lg font-bold text-gray-900">
+            {title}
+          </h3>
+          {description ? (
+            <p className="mt-1 text-sm text-surface-400">{description}</p>
+          ) : null}
         </div>
-        <button
-          type="button"
-          onClick={onClose}
-          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white/15 text-white transition hover:bg-white/25"
-        >
-          <X className="h-4 w-4" />
-        </button>
+        {action}
       </div>
+      {children}
     </div>
   );
 }
 
-// ── Employee monthly calendar view ───────────────────────────────────────────
-function EmployeeAttendanceView() {
-  const now = new Date();
+// ── Main page ─────────────────────────────────────────────────────────────────
+export default function AttendancePage() {
+  const { user, isHR } = useAuth();
+  const today = new Date();
+  const fileInputRef = useRef(null);
+
+  // ── Month navigation ──────────────────────────────────────────────────────
   const [monthState, setMonthState] = useState({
-    month: now.getMonth() + 1,
-    year: now.getFullYear(),
+    month: today.getMonth() + 1,
+    year: today.getFullYear(),
   });
+
+  // ── Data ──────────────────────────────────────────────────────────────────
+  const [loading, setLoading] = useState(true);
+  const [employees, setEmployees] = useState([]);
+  const [departments, setDepartments] = useState([]);
   const [records, setRecords] = useState([]);
   const [holidays, setHolidays] = useState([]);
-  const [selectedDate, setSelectedDate] = useState(now);
-  const [loading, setLoading] = useState(true);
+  const [selectedDate, setSelectedDate] = useState(today);
+  const [importLogs, setImportLogs] = useState([]);
 
-  // Correction requests state
+  // ── Filters & tabs ────────────────────────────────────────────────────────
+  const [activeTab, setActiveTab] = useState("records");
+  const [departmentFilter, setDepartmentFilter] = useState("");
+  const [employeeFilter, setEmployeeFilter] = useState("");
+  const [statusFilter, setStatusFilter] = useState("");
+
+  // ── Record form modal ─────────────────────────────────────────────────────
+  const [showForm, setShowForm] = useState(false);
+  const [editRecord, setEditRecord] = useState(null);
+  const [form, setForm] = useState(EMPTY_FORM);
+  const [saving, setSaving] = useState(false);
+
+  // ── Import modal ──────────────────────────────────────────────────────────
+  const [showImport, setShowImport] = useState(false);
+  const [importType, setImportType] = useState("daily"); // 'daily' | 'monthly' | 'standard'
+  const [importMonth, setImportMonth] = useState(today.getMonth() + 1);
+  const [importYear, setImportYear] = useState(today.getFullYear());
+  const [selectedFile, setSelectedFile] = useState(null);
+  const [importing, setImporting] = useState(false);
+  const [importResult, setImportResult] = useState(null);
+
+  // ── Delete confirm ────────────────────────────────────────────────────────
+  const [deleteId, setDeleteId] = useState("");
+
+  // ── Correction requests (HR) ──────────────────────────────────────────────
   const [correctionRequests, setCorrectionRequests] = useState([]);
-  const [quota, setQuota] = useState({ used: 0, limit: 10 });
-  const [dayDetailRecord, setDayDetailRecord] = useState(null);
-  const [showCorrectionForm, setShowCorrectionForm] = useState(false);
-  const [correctionForm, setCorrectionForm] = useState(EMPTY_CORRECTION);
-  const [submitting, setSubmitting] = useState(false);
+  const [requestStatusFilter, setRequestStatusFilter] = useState("all"); // all|pending|approved|rejected
+  const [reviewingRequest, setReviewingRequest] = useState(null);
+  const [hrComment, setHrComment] = useState("");
+  const [reviewSaving, setReviewSaving] = useState(false);
 
-  const loadAttendance = useCallback(async () => {
+  // ── Requests (Employee) ───────────────────────────────────────────────────
+  const [empTab, setEmpTab] = useState("calendar"); // 'calendar' | 'regularization'
+  const [myRequests, setMyRequests] = useState([]);
+  // { mode: 'present' | 'leave', dateEditable: bool }
+  const [requestModal, setRequestModal] = useState(null);
+  const [requestForm, setRequestForm] = useState({
+    date: toIsoDate(new Date()),
+    category: "missed-punch",
+    checkIn: "",
+    checkOut: "",
+    leaveType: "full",
+    reason: "",
+  });
+  const [requestSaving, setRequestSaving] = useState(false);
+
+  // Window bounds for a regularization request (today back to N days ago).
+  const regularizationMinDate = toIsoDate(
+    new Date(Date.now() - REGULARIZATION_WINDOW_DAYS * 24 * 60 * 60 * 1000),
+  );
+  const todayIso = toIsoDate(new Date());
+
+  // ── Load data ─────────────────────────────────────────────────────────────
+  useEffect(() => {
+    if (!user) return;
+    loadAttendance();
+  }, [
+    user,
+    isHR,
+    monthState.month,
+    monthState.year,
+    departmentFilter,
+    employeeFilter,
+    statusFilter,
+    activeTab,
+  ]);
+
+  const loadAttendance = async () => {
     setLoading(true);
     try {
-      const [attendanceRes, requestsRes] = await Promise.all([
+      if (isHR) {
+        const recordPromise = attendanceAPI.list({
+          month: monthState.month,
+          year: monthState.year,
+          department: departmentFilter || undefined,
+          employeeId: employeeFilter || undefined,
+          status: statusFilter || undefined,
+          limit: 300,
+        });
+
+        const importPromise =
+          activeTab === "imports"
+            ? attendanceAPI.importLogs()
+            : Promise.resolve({ data: { logs: [] } });
+
+        const correctionPromise = attendanceAPI.listCorrectionRequests({
+          month: monthState.month,
+          year: monthState.year,
+        });
+
+        const [recordsRes, employeesRes, departmentsRes, importLogsRes, correctionRes] =
+          await Promise.all([
+            recordPromise,
+            employeeAPI.list({ limit: 300, isActive: true }),
+            employeeAPI.departments(),
+            importPromise,
+            correctionPromise,
+          ]);
+
+        setRecords(recordsRes.data.records);
+        setEmployees(employeesRes.data.employees);
+        setDepartments(departmentsRes.data.departments);
+        setImportLogs(importLogsRes.data.logs);
+        setCorrectionRequests(correctionRes.data.requests || []);
+        setHolidays([]);
+        return;
+      }
+
+      const [monthRes, myRequestsRes] = await Promise.all([
         attendanceAPI.getMyMonth(monthState.month, monthState.year),
         attendanceAPI.getMyCorrectionRequests({
           month: monthState.month,
           year: monthState.year,
         }),
       ]);
-      setRecords(attendanceRes.data.records || []);
-      setHolidays(attendanceRes.data.holidays || []);
-      setCorrectionRequests(requestsRes.data.requests || []);
-      setQuota({
-        used: requestsRes.data.used || 0,
-        limit: requestsRes.data.limit || 10,
-      });
-      const now = new Date();
-      const isCurrentMonth =
-        monthState.month === now.getMonth() + 1 &&
-        monthState.year === now.getFullYear();
-      setSelectedDate(
-        isCurrentMonth
-          ? now
-          : new Date(monthState.year, monthState.month - 1, 1),
-      );
-    } catch {
-      toast.error("Failed to load attendance data.");
-    } finally {
-      setLoading(false);
-    }
-  }, [monthState.month, monthState.year]);
+      const { data } = monthRes;
+      setRecords(data.records);
+      setHolidays(data.holidays);
+      setMyRequests(myRequestsRes.data.requests || []);
 
-  useEffect(() => {
-    loadAttendance();
-  }, [loadAttendance]);
+      const defaultDate =
+        monthState.month === today.getMonth() + 1 &&
+        monthState.year === today.getFullYear()
+          ? today
+          : new Date(monthState.year, monthState.month - 1, 1);
 
-  const openDayDetail = (record) => {
-    setDayDetailRecord(record);
-    setCorrectionForm(EMPTY_CORRECTION);
-    setShowCorrectionForm(false);
-  };
-
-  const closeDayDetail = () => {
-    setDayDetailRecord(null);
-    setShowCorrectionForm(false);
-  };
-
-  const handleSubmitCorrection = async (e) => {
-    e.preventDefault();
-    if (!correctionForm.reason.trim()) {
-      toast.error("Please provide a reason for the correction.");
-      return;
-    }
-    if (!correctionForm.requestedCheckIn && !correctionForm.requestedCheckOut) {
-      toast.error("Enter at least one corrected time.");
-      return;
-    }
-    setSubmitting(true);
-    try {
-      await attendanceAPI.submitCorrectionRequest({
-        attendanceId: dayDetailRecord._id,
-        requestedCheckIn: correctionForm.requestedCheckIn || undefined,
-        requestedCheckOut: correctionForm.requestedCheckOut || undefined,
-        reason: correctionForm.reason.trim(),
-      });
-      toast.success("Correction request submitted. HR will review it shortly.");
-      setShowCorrectionForm(false);
-      setCorrectionForm(EMPTY_CORRECTION);
-      await loadAttendance();
-    } catch (err) {
+      setSelectedDate(defaultDate);
+    } catch (error) {
       toast.error(
-        err.response?.data?.message || "Failed to submit correction request.",
+        error.response?.data?.message || "Failed to load attendance data.",
       );
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  const getRequestForRecord = (recordId) =>
-    correctionRequests.find(
-      (r) => r.attendanceId?._id === recordId || r.attendanceId === recordId,
-    );
-
-  const present = records.filter((r) => r.status === "present").length;
-  const late = records.filter((r) => r.status === "late").length;
-  const onLeave = records.filter((r) =>
-    ["leave", "half-day"].includes(r.status),
-  ).length;
-
-  return (
-    <div className="mx-auto max-w-7xl space-y-6">
-      {/* Purple hero banner */}
-      <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-violet-700 via-purple-700 to-indigo-800 p-6 purple-glow-lg sm:p-8">
-        <div className="pointer-events-none absolute -right-12 -top-12 h-48 w-48 rounded-full bg-white/5" />
-        <div className="relative z-10 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <div className="mb-1 flex items-center gap-2">
-              <CalendarCheck className="h-4 w-4 text-purple-300" />
-              <span className="text-sm font-medium text-purple-300">
-                Attendance
-              </span>
-            </div>
-            <h1 className="font-display text-2xl font-bold text-white sm:text-3xl">
-              My Attendance
-            </h1>
-            <p className="mt-1 text-sm text-purple-200">
-              Review your monthly attendance calendar and daily records.
-            </p>
-          </div>
-        </div>
-      </div>
-
-      {/* Month navigation */}
-      <div className="glass-card overflow-hidden">
-        <div className="border-b border-purple-50 bg-gradient-to-r from-purple-50/60 to-white px-5 py-3">
-          <p className="text-xs font-semibold uppercase tracking-wider text-purple-600">
-            Select Period
-          </p>
-        </div>
-        <div className="flex flex-wrap items-center gap-3 p-4">
-          <button
-            type="button"
-            onClick={() => setMonthState((cur) => shiftMonth(cur, -1))}
-            className="inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-purple-200 text-purple-500 transition hover:bg-purple-50"
-          >
-            <ChevronLeft className="h-4 w-4" />
-          </button>
-          <div className="rounded-2xl bg-gradient-to-r from-violet-50 to-purple-50 border border-purple-100 px-4 py-3 text-sm font-bold text-purple-700">
-            {getMonthLabel(monthState.year, monthState.month)}
-          </div>
-          <button
-            type="button"
-            onClick={() => setMonthState((cur) => shiftMonth(cur, 1))}
-            className="inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-purple-200 text-purple-500 transition hover:bg-purple-50"
-          >
-            <ChevronRight className="h-4 w-4" />
-          </button>
-          <select
-            value={monthState.month}
-            onChange={(e) =>
-              setMonthState((cur) => ({
-                ...cur,
-                month: Number(e.target.value),
-              }))
-            }
-            className="input-field min-w-[160px]"
-          >
-            {getMonthOptions().map((o) => (
-              <option key={o.value} value={o.value}>
-                {o.label}
-              </option>
-            ))}
-          </select>
-          <select
-            value={monthState.year}
-            onChange={(e) =>
-              setMonthState((cur) => ({ ...cur, year: Number(e.target.value) }))
-            }
-            className="input-field min-w-[120px]"
-          >
-            {getYearOptions(4).map((y) => (
-              <option key={y} value={y}>
-                {y}
-              </option>
-            ))}
-          </select>
-        </div>
-      </div>
-
-      {/* Stats */}
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <GradientStatCard
-          icon={CalendarCheck}
-          label="Present"
-          value={present}
-          gradient="from-emerald-500 to-teal-600"
-          subtext="Days present this month"
-        />
-        <GradientStatCard
-          icon={CalendarCheck}
-          label="Late"
-          value={late}
-          gradient="from-amber-500 to-orange-600"
-          subtext="Late arrivals this month"
-        />
-        <GradientStatCard
-          icon={CalendarCheck}
-          label="On Leave"
-          value={onLeave}
-          gradient="from-blue-500 to-cyan-600"
-          subtext="Leave and half-day records"
-        />
-        <GradientStatCard
-          icon={CalendarCheck}
-          label="Holidays"
-          value={holidays.length}
-          gradient="from-violet-600 to-purple-700"
-          subtext="Published holidays this month"
-        />
-      </div>
-
-      {/* Calendar */}
-      <div className="glass-card overflow-hidden">
-        <div className="h-1 bg-gradient-to-r from-emerald-500 to-teal-600" />
-        <div className="p-5">
-          <h3 className="mb-5 font-display text-lg font-bold text-gray-900">
-            Monthly Calendar
-          </h3>
-          {loading ? (
-            <p className="py-10 text-center text-sm text-surface-400">
-              Loading attendance calendar…
-            </p>
-          ) : (
-            <AttendanceCalendar
-              year={monthState.year}
-              month={monthState.month}
-              records={records}
-              holidays={holidays}
-              selectedDate={selectedDate}
-              onSelectDate={setSelectedDate}
-            />
-          )}
-        </div>
-      </div>
-
-      {/* Records table */}
-      <div className="glass-card overflow-hidden">
-        <div className="border-b border-purple-100 px-5 py-4 flex items-center justify-between gap-4 flex-wrap">
-          <div>
-            <h3 className="font-display text-lg font-bold text-gray-900">
-              Attendance Records
-            </h3>
-            <p className="mt-0.5 text-sm text-surface-400">
-              Detailed daily records for{" "}
-              {getMonthLabel(monthState.year, monthState.month)}
-            </p>
-          </div>
-          {/* Monthly quota badge */}
-          <div className="flex items-center gap-2 rounded-2xl bg-purple-100 px-4 py-2">
-            <Clock className="h-4 w-4 text-purple-500" />
-            <span className="text-sm text-purple-700">
-              Correction requests:{" "}
-              <span
-                className={`font-semibold ${quota.used >= quota.limit ? "text-red-600" : "text-purple-900"}`}
-              >
-                {quota.used}/{quota.limit}
-              </span>{" "}
-              this month
-            </span>
-          </div>
-        </div>
-        {loading ? (
-          <div className="p-10 text-center text-sm text-surface-400">
-            Loading records…
-          </div>
-        ) : records.length === 0 ? (
-          <EmptyState
-            icon={CalendarCheck}
-            title="No records found"
-            description="Attendance records will appear here once they are available for the selected month."
-          />
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[780px]">
-              <thead>
-                <tr className="border-b border-purple-100 bg-gradient-to-r from-purple-50 to-violet-50/60">
-                  {[
-                    "Date",
-                    "Status",
-                    "Check In",
-                    "Check Out",
-                    "Working Hours",
-                    "Correction",
-                    "Details",
-                  ].map((h) => (
-                    <th
-                      key={h}
-                      className="px-5 py-3.5 text-left text-xs font-bold uppercase tracking-wider text-purple-700"
-                    >
-                      {h}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-purple-50/80">
-                {[...records]
-                  .sort((a, b) => new Date(b.date) - new Date(a.date))
-                  .map((record) => {
-                    const req = getRequestForRecord(record._id);
-                    return (
-                      <tr
-                        key={record._id}
-                        className="hover:bg-purple-50/30 transition-colors"
-                      >
-                        <td className="px-5 py-3.5 text-sm font-medium text-gray-900 whitespace-nowrap">
-                          {formatDate(record.date)}
-                        </td>
-                        <td className="px-5 py-3.5">
-                          <span
-                            className={`status-badge ${getStatusTone(record.status)}`}
-                          >
-                            {record.status}
-                          </span>
-                        </td>
-                        <td className="px-5 py-3.5 text-sm text-gray-700">
-                          {record.checkIn || "—"}
-                        </td>
-                        <td className="px-5 py-3.5 text-sm text-gray-700">
-                          {record.checkOut || "—"}
-                        </td>
-                        <td className="px-5 py-3.5 text-sm text-gray-700">
-                          {record.workingHours
-                            ? `${record.workingHours} hrs`
-                            : "—"}
-                        </td>
-                        <td className="px-5 py-3.5">
-                          {req ? (
-                            <span
-                              className={`status-badge ${STATUS_TONE[req.status] || ""}`}
-                            >
-                              {req.status}
-                            </span>
-                          ) : (
-                            <span className="text-xs text-surface-300">—</span>
-                          )}
-                        </td>
-                        <td className="px-5 py-3.5">
-                          <button
-                            type="button"
-                            onClick={() => openDayDetail(record)}
-                            className="inline-flex items-center gap-1.5 rounded-xl border border-purple-200 px-3 py-1.5 text-xs font-medium text-purple-600 transition hover:border-purple-400 hover:bg-purple-50 hover:text-purple-700"
-                          >
-                            <FileText className="h-3.5 w-3.5" />
-                            View
-                          </button>
-                        </td>
-                      </tr>
-                    );
-                  })}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
-
-      {/* ── Day Details Modal ─────────────────────────────────────────────── */}
-      {dayDetailRecord && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm">
-          <div className="relative w-full max-w-lg rounded-3xl bg-white shadow-2xl overflow-hidden">
-            <ModalHeader
-              title="Day Details"
-              description={formatDate(dayDetailRecord.date)}
-              onClose={closeDayDetail}
-              gradient="from-violet-600 to-indigo-700"
-            />
-
-            <div className="space-y-5 px-6 py-5 max-h-[80vh] overflow-y-auto">
-              {/* Summary grid */}
-              <div className="grid grid-cols-2 gap-3">
-                <div className="rounded-2xl bg-purple-50/60 border border-purple-100 p-4">
-                  <p className="text-xs font-semibold uppercase tracking-wider text-purple-500">
-                    Status
-                  </p>
-                  <span
-                    className={`mt-1 status-badge ${getStatusTone(dayDetailRecord.status)}`}
-                  >
-                    {dayDetailRecord.status}
-                  </span>
-                </div>
-                <div className="rounded-2xl bg-purple-50/60 border border-purple-100 p-4">
-                  <p className="text-xs font-semibold uppercase tracking-wider text-purple-500">
-                    Working Hours
-                  </p>
-                  <p className="mt-1 text-sm font-semibold text-gray-900">
-                    {dayDetailRecord.workingHours
-                      ? `${dayDetailRecord.workingHours} hrs`
-                      : "—"}
-                  </p>
-                </div>
-                <div className="rounded-2xl bg-purple-50/60 border border-purple-100 p-4">
-                  <p className="text-xs font-semibold uppercase tracking-wider text-purple-500">
-                    Check In
-                  </p>
-                  <p className="mt-1 text-sm font-semibold text-gray-900">
-                    {dayDetailRecord.checkIn || "—"}
-                  </p>
-                </div>
-                <div className="rounded-2xl bg-purple-50/60 border border-purple-100 p-4">
-                  <p className="text-xs font-semibold uppercase tracking-wider text-purple-500">
-                    Check Out
-                  </p>
-                  <p className="mt-1 text-sm font-semibold text-gray-900">
-                    {dayDetailRecord.checkOut || "—"}
-                  </p>
-                </div>
-              </div>
-
-              {dayDetailRecord.note && (
-                <p className="text-sm text-surface-400">
-                  <span className="font-medium text-gray-700">Note:</span>{" "}
-                  {dayDetailRecord.note}
-                </p>
-              )}
-
-              {/* Show existing request */}
-              {(() => {
-                const req = getRequestForRecord(dayDetailRecord._id);
-                if (!req) return null;
-                return (
-                  <div className="rounded-2xl border border-purple-100 bg-purple-50/40 p-4 space-y-1">
-                    <div className="flex items-center justify-between">
-                      <p className="text-xs font-semibold uppercase tracking-wider text-purple-600">
-                        Correction Request
-                      </p>
-                      <span
-                        className={`status-badge ${STATUS_TONE[req.status] || ""}`}
-                      >
-                        {req.status}
-                      </span>
-                    </div>
-                    {req.requestedCheckIn && (
-                      <p className="text-sm text-gray-700">
-                        Requested In:{" "}
-                        <span className="font-medium">
-                          {req.requestedCheckIn}
-                        </span>
-                      </p>
-                    )}
-                    {req.requestedCheckOut && (
-                      <p className="text-sm text-gray-700">
-                        Requested Out:{" "}
-                        <span className="font-medium">
-                          {req.requestedCheckOut}
-                        </span>
-                      </p>
-                    )}
-                    <p className="text-sm text-surface-400">
-                      Reason: {req.reason}
-                    </p>
-                    {req.hrComment && (
-                      <p className="text-sm text-surface-400">
-                        HR: {req.hrComment}
-                      </p>
-                    )}
-                  </div>
-                );
-              })()}
-
-              {/* Request correction button / inline form */}
-              {!getRequestForRecord(dayDetailRecord._id) && (
-                <>
-                  {!showCorrectionForm ? (
-                    <button
-                      type="button"
-                      disabled={quota.used >= quota.limit}
-                      onClick={() => setShowCorrectionForm(true)}
-                      className="w-full btn-secondary text-sm disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      <Clock className="h-4 w-4" />
-                      {quota.used >= quota.limit
-                        ? `No requests left this month (${quota.limit}/${quota.limit} used)`
-                        : `Request Time Correction (${quota.limit - quota.used} left this month)`}
-                    </button>
-                  ) : (
-                    <form
-                      onSubmit={handleSubmitCorrection}
-                      className="space-y-4 border-t border-purple-100 pt-4"
-                    >
-                      <p className="text-xs font-bold uppercase tracking-wider text-purple-600">
-                        Request Time Correction
-                      </p>
-                      <div className="grid grid-cols-2 gap-3">
-                        <div>
-                          <label className="mb-1 block text-xs font-medium text-surface-500">
-                            Correct Check In
-                          </label>
-                          <input
-                            type="time"
-                            value={correctionForm.requestedCheckIn}
-                            onChange={(e) =>
-                              setCorrectionForm((f) => ({
-                                ...f,
-                                requestedCheckIn: e.target.value,
-                              }))
-                            }
-                            className="input-field"
-                          />
-                        </div>
-                        <div>
-                          <label className="mb-1 block text-xs font-medium text-surface-500">
-                            Correct Check Out
-                          </label>
-                          <input
-                            type="time"
-                            value={correctionForm.requestedCheckOut}
-                            onChange={(e) =>
-                              setCorrectionForm((f) => ({
-                                ...f,
-                                requestedCheckOut: e.target.value,
-                              }))
-                            }
-                            className="input-field"
-                          />
-                        </div>
-                      </div>
-                      <div>
-                        <label className="mb-1 block text-xs font-medium text-surface-500">
-                          Reason <span className="text-red-500">*</span>
-                        </label>
-                        <textarea
-                          rows={3}
-                          placeholder="Briefly explain why the time needs correction…"
-                          value={correctionForm.reason}
-                          onChange={(e) =>
-                            setCorrectionForm((f) => ({
-                              ...f,
-                              reason: e.target.value,
-                            }))
-                          }
-                          className="input-field resize-none"
-                          maxLength={500}
-                          required
-                        />
-                      </div>
-                      <div className="flex gap-2">
-                        <button
-                          type="button"
-                          onClick={() => setShowCorrectionForm(false)}
-                          className="btn-secondary text-sm flex-1"
-                          disabled={submitting}
-                        >
-                          Cancel
-                        </button>
-                        <button
-                          type="submit"
-                          className="btn-primary text-sm flex-1"
-                          disabled={submitting}
-                        >
-                          {submitting ? "Submitting…" : "Submit Request"}
-                        </button>
-                      </div>
-                    </form>
-                  )}
-                </>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ── Main page: routes between HR punch-log view and employee calendar ────────
-export default function AttendancePage() {
-  const { user } = useAuth();
-  const isHR = user?.role === "hr";
-
-  // Employee path — monthly calendar view
-  if (!isHR) {
-    return (
-      <AppShell>
-        <EmployeeAttendanceView />
-      </AppShell>
-    );
-  }
-
-  // HR path — punch-log daily/import-history view
-  return <HRAttendancePage />;
-}
-
-// ── HR punch-log page ─────────────────────────────────────────────────────────
-function HRAttendancePage() {
-  const fileRef = useRef(null);
-
-  const [tab, setTab] = useState("daily");
-  const [date, setDate] = useState(toDateStr(new Date()));
-  const [filterDept, setFilterDept] = useState("");
-  const [departments, setDepartments] = useState([]);
-  const [logs, setLogs] = useState([]);
-  const [pagination, setPagination] = useState({});
-  const [loading, setLoading] = useState(true);
-
-  // Import history tab
-  const [importLogs, setImportLogs] = useState([]);
-  const [importLogsLoading, setImportLogsLoading] = useState(false);
-
-  // Punch modal (add / edit)
-  const [punchModal, setPunchModal] = useState(false);
-  const [editingLog, setEditingLog] = useState(null);
-  const [punchForm, setPunchForm] = useState(EMPTY_PUNCH);
-  const [punchSubmitting, setPunchSubmitting] = useState(false);
-  const [allEmployees, setAllEmployees] = useState([]);
-  const [empSearch, setEmpSearch] = useState("");
-  const [showEmpDrop, setShowEmpDrop] = useState(false);
-
-  // CSV import modal (legacy column-based punch logs)
-  const [importModal, setImportModal] = useState(false);
-  const [importFile, setImportFile] = useState(null);
-  const [importing, setImporting] = useState(false);
-  const [importResult, setImportResult] = useState(null);
-
-  // Monthly attendance import modal
-  const now = new Date();
-  const [monthlyModal, setMonthlyModal] = useState(false);
-  const [monthlyFile, setMonthlyFile] = useState(null);
-  const [monthlyMonth, setMonthlyMonth] = useState(now.getMonth() + 1);
-  const [monthlyYear, setMonthlyYear] = useState(now.getFullYear());
-  const [monthlyImporting, setMonthlyImporting] = useState(false);
-  const [monthlyResult, setMonthlyResult] = useState(null);
-  const monthlyFileRef = useRef(null);
-
-  // Daily detailed XLS import (Secureye/ONtime "Date wise Daily Attendance Report")
-  const [dailyModal, setDailyModal] = useState(false);
-  const [dailyFile, setDailyFile] = useState(null);
-  const [dailyImporting, setDailyImporting] = useState(false);
-  const [dailyResult, setDailyResult] = useState(null);
-  const [dailyDragOver, setDailyDragOver] = useState(false);
-  const dailyFileRef = useRef(null);
-
-  // Delete confirm
-  const [deleteId, setDeleteId] = useState(null);
-
-  // Correction requests
-  const [correctionRequests, setCorrectionRequests] = useState([]);
-  const [correctionLoading, setCorrectionLoading] = useState(false);
-  const [reviewModal, setReviewModal] = useState(null); // { req, action }
-  const [hrComment, setHrComment] = useState("");
-  const [reviewSaving, setReviewSaving] = useState(false);
-
-  // ── Load daily punch logs ─────────────────────────────────────────────────
-  const loadDaily = useCallback(async () => {
-    setLoading(true);
-    try {
-      const params = { date };
-      if (filterDept) params.department = filterDept;
-      const { data } = await attendanceAPI.daily(params);
-      setLogs(data.logs || []);
-      setPagination(data.pagination || {});
-    } catch {
-      toast.error("Failed to load attendance records.");
     } finally {
       setLoading(false);
     }
-  }, [date, filterDept]);
-
-  useEffect(() => {
-    if (tab === "daily") loadDaily();
-  }, [tab, loadDaily]);
-
-  useEffect(() => {
-    employeeAPI
-      .departments()
-      .then((r) => setDepartments(r.data.departments))
-      .catch(() => {});
-    employeeAPI
-      .list({ limit: 200 })
-      .then((r) => setAllEmployees(r.data.employees))
-      .catch(() => {});
-  }, []);
-
-  const loadImportLogs = async () => {
-    setImportLogsLoading(true);
-    try {
-      const { data } = await attendanceAPI.importLogs();
-      setImportLogs(data.logs || []);
-    } catch {
-      // silent
-    } finally {
-      setImportLogsLoading(false);
-    }
   };
 
-  useEffect(() => {
-    if (tab === "history") loadImportLogs();
-  }, [tab]);
-
-  const loadCorrectionRequests = async () => {
-    setCorrectionLoading(true);
-    try {
-      const { data } = await attendanceAPI.listCorrectionRequests();
-      setCorrectionRequests(data.requests || []);
-    } catch {
-      // silent
-    } finally {
-      setCorrectionLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    if (tab === "requests") loadCorrectionRequests();
-  }, [tab]);
-
-  // Always load count for badge
-  useEffect(() => {
-    attendanceAPI
-      .listCorrectionRequests({ status: "pending" })
-      .then((r) => setCorrectionRequests(r.data.requests || []))
-      .catch(() => {});
-  }, []);
-
-  // ── Date navigation ───────────────────────────────────────────────────────
-  const shiftDate = (n) => {
-    const d = new Date(date);
-    d.setDate(d.getDate() + n);
-    setDate(toDateStr(d));
-  };
-
-  // ── Punch modal helpers ───────────────────────────────────────────────────
-  const openAdd = () => {
-    setEditingLog(null);
-    setPunchForm({ ...EMPTY_PUNCH, date });
-    setEmpSearch("");
-    setPunchModal(true);
-  };
-
-  const openEdit = (log) => {
-    const ts = new Date(log.timestamp);
-    setPunchForm({
-      employeeId: log.employee?._id || "",
-      date: toDateStr(ts),
-      time: toTimeStr(ts),
-      status: log.status,
-      note: log.note || "",
+  // ── Record form handlers ──────────────────────────────────────────────────
+  const openCreate = () => {
+    setEditRecord(null);
+    setForm({
+      ...EMPTY_FORM,
+      date: toIsoDate(
+        new Date(monthState.year, monthState.month - 1, today.getDate()),
+      ),
     });
-    setEditingLog(log);
-    setEmpSearch(log.employee?.name || "");
-    setPunchModal(true);
+    setShowForm(true);
   };
 
-  const handlePunchSubmit = async (e) => {
-    e.preventDefault();
-    setPunchSubmitting(true);
+  const openEdit = (record) => {
+    const employee = record.employee || record.employeeId || {};
+    setEditRecord(record);
+    setForm({
+      employeeId: employee._id || "",
+      date: toIsoDate(record.date),
+      status: record.status || "present",
+      checkIn: record.checkIn || "",
+      checkOut: record.checkOut || "",
+      note: record.note || "",
+    });
+    setShowForm(true);
+  };
+
+  const handleSaveRecord = async (event) => {
+    event.preventDefault();
+    setSaving(true);
     try {
-      if (editingLog) {
-        await attendanceAPI.update(editingLog._id, {
-          date: punchForm.date,
-          time: punchForm.time,
-          status: punchForm.status,
-          note: punchForm.note,
-        });
-        toast.success("Attendance event updated.");
+      const payload = {
+        employeeId: form.employeeId,
+        date: form.date,
+        status: form.status,
+        note: form.note.trim(),
+      };
+      if (form.checkIn) payload.checkIn = form.checkIn;
+      if (form.checkOut) payload.checkOut = form.checkOut;
+
+      if (editRecord) {
+        await attendanceAPI.update(editRecord._id, payload);
+        toast.success("Attendance record updated.");
       } else {
-        await attendanceAPI.addManual({
-          employeeId: punchForm.employeeId,
-          date: punchForm.date,
-          time: punchForm.time,
-          status: punchForm.status,
-          note: punchForm.note,
-        });
-        toast.success("Punch entry added.");
+        await attendanceAPI.create(payload);
+        toast.success("Attendance record created.");
       }
-      setPunchModal(false);
-      loadDaily();
-    } catch (err) {
-      toast.error(err.response?.data?.message || "Failed to save punch entry.");
+
+      setShowForm(false);
+      setForm(EMPTY_FORM);
+      await loadAttendance();
+    } catch (error) {
+      toast.error(
+        error.response?.data?.message || "Failed to save attendance record.",
+      );
     } finally {
-      setPunchSubmitting(false);
+      setSaving(false);
     }
   };
 
-  // ── Delete ────────────────────────────────────────────────────────────────
+  // ── Delete handler ────────────────────────────────────────────────────────
   const handleDelete = async () => {
     try {
       await attendanceAPI.delete(deleteId);
-      toast.success("Punch record deleted.");
-      setDeleteId(null);
-      loadDaily();
-    } catch {
-      toast.error("Failed to delete record.");
+      toast.success("Attendance record deleted.");
+      setDeleteId("");
+      await loadAttendance();
+    } catch (error) {
+      toast.error(
+        error.response?.data?.message || "Failed to delete attendance record.",
+      );
     }
   };
 
-  // ── CSV import ────────────────────────────────────────────────────────────
-  const handleImport = async () => {
-    if (!importFile) return;
-    setImporting(true);
+  // ── Import handlers ───────────────────────────────────────────────────────
+  const openImport = () => {
+    setImportType("daily");
+    setImportMonth(monthState.month);
+    setImportYear(monthState.year);
+    setSelectedFile(null);
     setImportResult(null);
+    setShowImport(true);
+  };
+
+  const closeImport = () => {
+    if (importing) return; // prevent accidental close while uploading
+    setShowImport(false);
+    setSelectedFile(null);
+    setImportResult(null);
+  };
+
+  const handleFileChange = (event) => {
+    const file = event.target.files?.[0] ?? null;
+    setSelectedFile(file);
+    setImportResult(null);
+  };
+
+  const handleImport = async () => {
+    if (!selectedFile) {
+      toast.error("Please choose a file before importing.");
+      return;
+    }
+
+    const needsMonth = IMPORT_TYPES.find(
+      (t) => t.id === importType,
+    )?.needsMonth;
+    if (needsMonth && (!importMonth || !importYear)) {
+      toast.error("Please select the month and year for this import.");
+      return;
+    }
+
+    setImporting(true);
     try {
-      const { data } = await attendanceAPI.importCsv(importFile);
-      setImportResult(data);
-      if (data.inserted > 0) {
-        toast.success(`${data.inserted} records imported.`);
-        loadDaily();
+      let res;
+      if (importType === "daily") {
+        res = await attendanceAPI.dailyUpload(selectedFile);
+      } else if (importType === "monthly") {
+        res = await attendanceAPI.monthlyUpload(
+          selectedFile,
+          importMonth,
+          importYear,
+        );
       } else {
-        toast("Import complete — check results below.", { icon: "ℹ️" });
+        res = await attendanceAPI.bulkUpload(selectedFile);
       }
-    } catch (err) {
-      toast.error(err.response?.data?.message || "Import failed.");
+
+      setImportResult(res.data);
+      toast.success(res.data.message || "Attendance imported successfully.");
+      await loadAttendance();
+    } catch (error) {
+      const msg =
+        error.response?.data?.message ||
+        "Import failed. Please check the file format.";
+      toast.error(msg);
+      setImportResult({
+        error: true,
+        message: msg,
+        errors: error.response?.data?.errors || [],
+      });
     } finally {
       setImporting(false);
     }
   };
 
-  // ── Monthly attendance import ─────────────────────────────────────────────
-  const openMonthlyModal = () => {
-    const n = new Date();
-    setMonthlyFile(null);
-    setMonthlyResult(null);
-    setMonthlyMonth(n.getMonth() + 1);
-    setMonthlyYear(n.getFullYear());
-    setMonthlyModal(true);
+  // ── Correction request review handlers ───────────────────────────────────
+  const openReview = (req, action) => {
+    setReviewingRequest({ req, action });
+    setHrComment("");
   };
 
-  const handleMonthlyImport = async () => {
-    if (!monthlyFile) return;
-    setMonthlyImporting(true);
-    setMonthlyResult(null);
-    try {
-      const { data } = await attendanceAPI.monthlyUpload(
-        monthlyFile,
-        monthlyMonth,
-        monthlyYear,
-      );
-      setMonthlyResult(data);
-      if (data.inserted > 0) {
-        toast.success(`${data.inserted} day-records imported.`);
-        loadDaily();
-      } else {
-        toast("Import complete — check results below.", { icon: "ℹ️" });
-      }
-    } catch (err) {
-      toast.error(err.response?.data?.message || "Monthly import failed.");
-    } finally {
-      setMonthlyImporting(false);
-    }
-  };
-
-  // ── Daily detailed XLS import (Secureye / ONtime fingerprint device) ──────
-  const MAX_DAILY_FILE_BYTES = 10 * 1024 * 1024; // 10 MB
-  const isAcceptedDailyFile = (file) => {
-    if (!file) return false;
-    const name = file.name?.toLowerCase() || "";
-    return name.endsWith(".xls") || name.endsWith(".xlsx");
-  };
-
-  const openDailyModal = () => {
-    setDailyFile(null);
-    setDailyResult(null);
-    setDailyDragOver(false);
-    setDailyModal(true);
-  };
-
-  const acceptDailyFile = (file) => {
-    if (!file) return;
-    if (!isAcceptedDailyFile(file)) {
-      toast.error("Please select an .xls or .xlsx file.");
-      return;
-    }
-    if (file.size > MAX_DAILY_FILE_BYTES) {
-      toast.error("File is larger than 10 MB.");
-      return;
-    }
-    setDailyFile(file);
-    setDailyResult(null);
-  };
-
-  const handleDailyImport = async () => {
-    if (!dailyFile || dailyImporting) return;
-    setDailyImporting(true);
-    setDailyResult(null);
-    try {
-      const { data } = await attendanceAPI.dailyUpload(dailyFile);
-      setDailyResult(data);
-      if (data.inserted > 0) {
-        toast.success(`${data.inserted} punch event(s) imported.`);
-        loadDaily();
-      } else {
-        toast("Import finished — review the results below.", { icon: "ℹ️" });
-      }
-    } catch (err) {
-      toast.error(err.response?.data?.message || "Daily import failed.");
-    } finally {
-      setDailyImporting(false);
-    }
-  };
-
-  // ── Correction request review ─────────────────────────────────────────────
   const handleReview = async (e) => {
     e.preventDefault();
-    if (!reviewModal) return;
+    if (!reviewingRequest) return;
     setReviewSaving(true);
     try {
-      const { req, action } = reviewModal;
+      const { req, action } = reviewingRequest;
       if (action === "approve") {
         await attendanceAPI.approveCorrectionRequest(req._id, hrComment);
         toast.success("Request approved and attendance updated.");
@@ -1067,9 +428,9 @@ function HRAttendancePage() {
         await attendanceAPI.rejectCorrectionRequest(req._id, hrComment);
         toast.success("Request rejected.");
       }
-      setReviewModal(null);
+      setReviewingRequest(null);
       setHrComment("");
-      loadCorrectionRequests();
+      await loadAttendance();
     } catch (err) {
       toast.error(err.response?.data?.message || "Failed to review request.");
     } finally {
@@ -1077,754 +438,1401 @@ function HRAttendancePage() {
     }
   };
 
-  const filteredEmps = allEmployees
-    .filter(
-      (e) =>
-        e.name.toLowerCase().includes(empSearch.toLowerCase()) ||
-        e.email.toLowerCase().includes(empSearch.toLowerCase()),
-    )
-    .slice(0, 8);
+  // ── Employee request handlers (regularization / leave) ────────────────────
+  // `date` may be a Date (from the calendar) or null (raise from the tab, where
+  // the employee picks the date). `dateEditable` controls whether the date field
+  // is editable in the modal.
+  const openRequest = (date, mode, dateEditable = false) => {
+    setRequestModal({ mode, dateEditable });
+    setRequestForm({
+      date: date ? toIsoDate(date) : toIsoDate(new Date()),
+      category: "missed-punch",
+      checkIn: "",
+      checkOut: "",
+      leaveType: "full",
+      reason: "",
+    });
+  };
 
+  const submitRequest = async (e) => {
+    e.preventDefault();
+    if (!requestModal) return;
+    if (!requestForm.date) {
+      toast.error("Please choose a date.");
+      return;
+    }
+    if (!requestForm.reason.trim()) {
+      toast.error("Please add a reason for your request.");
+      return;
+    }
+
+    setRequestSaving(true);
+    try {
+      const iso = requestForm.date;
+      if (requestModal.mode === "present") {
+        await attendanceAPI.submitCorrectionRequest({
+          type: "present",
+          date: iso,
+          category: requestForm.category,
+          requestedCheckIn: requestForm.checkIn || undefined,
+          requestedCheckOut: requestForm.checkOut || undefined,
+          reason: requestForm.reason.trim(),
+        });
+        toast.success("Regularization request sent to HR for approval.");
+      } else {
+        await leaveAPI.apply({
+          leaveType: requestForm.leaveType,
+          fromDate: iso,
+          toDate: iso,
+          reason: requestForm.reason.trim(),
+        });
+        toast.success("Leave request sent to HR for approval.");
+      }
+      setRequestModal(null);
+      setEmpTab("regularization");
+      await loadAttendance();
+    } catch (err) {
+      toast.error(err.response?.data?.message || "Failed to submit request.");
+    } finally {
+      setRequestSaving(false);
+    }
+  };
+
+  // ── Derived stats ─────────────────────────────────────────────────────────
+  const recordStats = {
+    total: records.length,
+    present: records.filter((r) =>
+      ["present", "wfh", "on-duty"].includes(r.status),
+    ).length,
+    late: records.filter((r) => r.status === "late").length,
+    leave: records.filter((r) => ["leave", "half-day"].includes(r.status))
+      .length,
+  };
+
+  // HR Requests tab — honor the status chip + the existing employee/department
+  // filters (filtered client-side from the month's already-loaded requests).
+  const visibleRequests = correctionRequests.filter((req) => {
+    if (requestStatusFilter !== "all" && req.status !== requestStatusFilter)
+      return false;
+    if (employeeFilter && String(req.employeeId?._id) !== String(employeeFilter))
+      return false;
+    if (departmentFilter && req.employeeId?.department !== departmentFilter)
+      return false;
+    return true;
+  });
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // RENDER
   // ─────────────────────────────────────────────────────────────────────────
   return (
     <AppShell>
-      <div className="max-w-7xl mx-auto space-y-6">
-        {/* Purple hero banner */}
-        <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-violet-700 via-purple-700 to-indigo-800 p-6 purple-glow-lg sm:p-8">
-          <div className="pointer-events-none absolute -right-12 -top-12 h-48 w-48 rounded-full bg-white/5" />
-          <div className="relative z-10 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <div className="mb-1 flex items-center gap-2">
-                <CalendarCheck className="h-4 w-4 text-purple-300" />
-                <span className="text-sm font-medium text-purple-300">
-                  HR Dashboard
-                </span>
+      <div className="mx-auto max-w-7xl space-y-6">
+        {/* ── Page header ──────────────────────────────────────────────────── */}
+        <PageHeader
+          title="Attendance"
+          description={
+            isHR
+              ? "Manage monthly attendance records, corrections, and imports."
+              : "Review your monthly attendance calendar with daily details."
+          }
+          actions={
+            isHR
+              ? [
+                  <button
+                    key="import"
+                    type="button"
+                    onClick={openImport}
+                    className="btn-secondary text-sm"
+                  >
+                    <FileUp className="h-4 w-4" />
+                    Import File
+                  </button>,
+                  <button
+                    key="create"
+                    type="button"
+                    onClick={openCreate}
+                    className="btn-primary text-sm"
+                  >
+                    <Plus className="h-4 w-4" />
+                    New Record
+                  </button>,
+                ]
+              : undefined
+          }
+        />
+
+        {/* ── Month navigation ─────────────────────────────────────────────── */}
+        <div className="glass-card p-4">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setMonthState((cur) => shiftMonth(cur, -1))}
+                className="inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-surface-200 text-surface-500 transition hover:bg-surface-50"
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </button>
+              <div className="rounded-2xl bg-surface-50 px-4 py-3 text-sm font-semibold text-gray-900">
+                {getMonthLabel(monthState.year, monthState.month)}
               </div>
-              <h1 className="font-display text-2xl font-bold text-white sm:text-3xl">
-                Attendance Management
-              </h1>
-              <p className="mt-1 text-sm text-purple-200">
-                Manage and review punch-level attendance records.
-              </p>
+              <button
+                type="button"
+                onClick={() => setMonthState((cur) => shiftMonth(cur, 1))}
+                className="inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-surface-200 text-surface-500 transition hover:bg-surface-50"
+              >
+                <ChevronRight className="h-4 w-4" />
+              </button>
             </div>
-            <div className="flex flex-wrap gap-2 sm:flex-col sm:items-end">
-              <button
-                onClick={() => {
-                  setMonthlyModal(true);
-                  setMonthlyFile(null);
-                  setMonthlyResult(null);
-                }}
-                className="inline-flex items-center gap-2 rounded-xl bg-white/10 px-4 py-2.5 text-sm font-semibold text-white backdrop-blur-sm transition hover:bg-white/20 active:scale-[0.98]"
+
+            <div className="grid gap-3 sm:grid-cols-2 lg:flex lg:items-center">
+              <select
+                value={monthState.month}
+                onChange={(e) =>
+                  setMonthState((cur) => ({
+                    ...cur,
+                    month: Number(e.target.value),
+                  }))
+                }
+                className="input-field min-w-[160px]"
               >
-                <FileText className="w-4 h-4" />
-                Monthly Import
-              </button>
-              <button
-                onClick={openDailyModal}
-                className="inline-flex items-center gap-2 rounded-xl bg-white/10 px-4 py-2.5 text-sm font-semibold text-white backdrop-blur-sm transition hover:bg-white/20 active:scale-[0.98]"
+                {getMonthOptions().map((o) => (
+                  <option key={o.value} value={o.value}>
+                    {o.label}
+                  </option>
+                ))}
+              </select>
+              <select
+                value={monthState.year}
+                onChange={(e) =>
+                  setMonthState((cur) => ({
+                    ...cur,
+                    year: Number(e.target.value),
+                  }))
+                }
+                className="input-field min-w-[140px]"
               >
-                <Upload className="w-4 h-4" />
-                Daily Import
-              </button>
-              <button
-                onClick={openAdd}
-                className="inline-flex items-center gap-2 rounded-xl bg-white px-4 py-2.5 text-sm font-semibold text-purple-700 shadow-sm transition hover:bg-purple-50 active:scale-[0.98]"
-              >
-                <Plus className="w-4 h-4" />
-                Add Punch
-              </button>
+                {getYearOptions(4).map((y) => (
+                  <option key={y} value={y}>
+                    {y}
+                  </option>
+                ))}
+              </select>
             </div>
           </div>
         </div>
 
-        {/* Tabs */}
-        <div className="flex gap-1 rounded-xl bg-purple-100/60 p-1 w-fit">
-          {[
-            { key: "daily", label: "Daily Report", icon: CalendarCheck },
-            { key: "requests", label: "Correction Requests", icon: Clock },
-            { key: "history", label: "Import History", icon: History },
-          ].map(({ key, label, icon: Icon }) => {
-            const pendingCount =
-              key === "requests"
-                ? correctionRequests.filter((r) => r.status === "pending")
-                    .length
-                : 0;
-            return (
-              <button
-                key={key}
-                onClick={() => setTab(key)}
-                className={`relative px-4 py-2 text-sm font-medium rounded-lg transition-all ${
-                  tab === key
-                    ? "bg-white text-purple-900 shadow-sm"
-                    : "text-purple-500 hover:text-purple-700"
-                }`}
-              >
-                <Icon className="w-4 h-4 inline-block mr-1.5 -mt-0.5" />
-                {label}
-                {pendingCount > 0 && (
-                  <span className="ml-1 rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-700">
-                    {pendingCount}
-                  </span>
-                )}
-              </button>
-            );
-          })}
-        </div>
-
-        {/* ── DAILY PUNCH REPORT ── */}
-        {tab === "daily" && (
+        {/* ── HR view ─────────────────────────────────────────────────────── */}
+        {isHR ? (
           <>
-            {/* Date controls + department filter */}
-            <div className="glass-card overflow-hidden">
-              <div className="border-b border-purple-50 bg-gradient-to-r from-purple-50/60 to-white px-5 py-3">
-                <p className="text-xs font-semibold uppercase tracking-wider text-purple-600">
-                  Date Navigation
-                </p>
-              </div>
-              <div className="flex flex-col sm:flex-row gap-3 p-4">
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => shiftDate(-1)}
-                    className="inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-purple-200 text-purple-500 transition hover:bg-purple-50"
-                  >
-                    <ArrowLeft className="w-4 h-4" />
-                  </button>
-                  <input
-                    type="date"
-                    value={date}
-                    onChange={(e) => setDate(e.target.value)}
-                    className="input-field w-auto text-center font-mono"
-                  />
-                  <button
-                    onClick={() => shiftDate(1)}
-                    className="inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-purple-200 text-purple-500 transition hover:bg-purple-50"
-                  >
-                    <ArrowRight className="w-4 h-4" />
-                  </button>
-                </div>
+            {/* Stats row */}
+            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+              <StatCard
+                icon={CalendarCheck}
+                label="Records"
+                value={recordStats.total}
+                tone="bg-brand-100 text-brand-700"
+                subtext="Attendance entries loaded"
+              />
+              <StatCard
+                icon={CalendarCheck}
+                label="Present"
+                value={recordStats.present}
+                tone="bg-green-100 text-green-700"
+                subtext="Employees marked present"
+              />
+              <StatCard
+                icon={CalendarCheck}
+                label="Late"
+                value={recordStats.late}
+                tone="bg-amber-100 text-amber-700"
+                subtext="Late arrivals this month"
+              />
+              <StatCard
+                icon={CalendarCheck}
+                label="Leave"
+                value={recordStats.leave}
+                tone="bg-blue-100 text-blue-700"
+                subtext="Leave and half-day records"
+              />
+            </div>
+
+            {/* Filter bar + tab switcher */}
+            <div className="glass-card p-4">
+              <div className="grid gap-3 lg:grid-cols-[180px_220px_180px_1fr]">
+                <select
+                  value={departmentFilter}
+                  onChange={(e) => setDepartmentFilter(e.target.value)}
+                  className="input-field"
+                >
+                  <option value="">All Departments</option>
+                  {departments.map((d) => (
+                    <option key={d} value={d}>
+                      {d}
+                    </option>
+                  ))}
+                </select>
+                <select
+                  value={employeeFilter}
+                  onChange={(e) => setEmployeeFilter(e.target.value)}
+                  className="input-field"
+                >
+                  <option value="">All Employees</option>
+                  {employees.map((emp) => (
+                    <option key={emp._id} value={emp._id}>
+                      {emp.employeeId || "Auto"} – {emp.name}
+                    </option>
+                  ))}
+                </select>
+                <select
+                  value={statusFilter}
+                  onChange={(e) => setStatusFilter(e.target.value)}
+                  className="input-field"
+                >
+                  <option value="">All Statuses</option>
+                  {STATUS_OPTIONS.map((s) => (
+                    <option key={s} value={s}>
+                      {s}
+                    </option>
+                  ))}
+                </select>
                 <div className="flex gap-2">
                   <button
-                    onClick={() => setDate(toDateStr(new Date()))}
-                    className="btn-secondary text-xs"
-                  >
-                    Today
-                  </button>
-                  <button
+                    type="button"
                     onClick={() => {
-                      const d = new Date();
-                      d.setDate(d.getDate() - 1);
-                      setDate(toDateStr(d));
+                      setDepartmentFilter("");
+                      setEmployeeFilter("");
+                      setStatusFilter("");
                     }}
-                    className="btn-secondary text-xs"
+                    className="btn-secondary text-sm"
                   >
-                    Yesterday
+                    Reset Filters
                   </button>
+                  <div className="ml-auto flex rounded-2xl bg-surface-100 p-1">
+                    {[
+                      { id: "records", label: "Records" },
+                      { id: "requests", label: "Requests", badge: correctionRequests.filter((r) => r.status === "pending").length },
+                      { id: "imports", label: "Import Logs" },
+                    ].map(({ id, label, badge }) => (
+                      <button
+                        key={id}
+                        type="button"
+                        onClick={() => setActiveTab(id)}
+                        className={`relative rounded-xl px-3 py-2 text-sm font-medium transition ${
+                          activeTab === id
+                            ? "bg-white text-gray-900 shadow-sm"
+                            : "text-surface-500 hover:text-gray-700"
+                        }`}
+                      >
+                        {label}
+                        {badge > 0 && (
+                          <span className="ml-1.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white">
+                            {badge}
+                          </span>
+                        )}
+                      </button>
+                    ))}
+                  </div>
                 </div>
-                {departments.length > 0 && (
-                  <div className="relative ml-auto">
-                    <select
-                      value={filterDept}
-                      onChange={(e) => setFilterDept(e.target.value)}
-                      className="input-field appearance-none pr-10 min-w-[180px]"
-                    >
-                      <option value="">All Departments</option>
-                      {departments.map((d) => (
-                        <option key={d} value={d}>
-                          {d}
-                        </option>
-                      ))}
-                    </select>
-                    <ChevronDown className="w-4 h-4 absolute right-3.5 top-1/2 -translate-y-1/2 text-surface-400 pointer-events-none" />
+              </div>
+            </div>
+
+            {/* Records table */}
+            {activeTab === "records" ? (
+              <div className="glass-card overflow-hidden">
+                {loading ? (
+                  <div className="p-10 text-center text-sm text-surface-400">
+                    Loading attendance records…
+                  </div>
+                ) : records.length === 0 ? (
+                  <EmptyState
+                    icon={CalendarCheck}
+                    title="No attendance records found"
+                    description="Create a new attendance record or import attendance data for this month."
+                    action={
+                      <button
+                        type="button"
+                        onClick={openCreate}
+                        className="btn-primary text-sm"
+                      >
+                        <Plus className="h-4 w-4" />
+                        New Record
+                      </button>
+                    }
+                  />
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full min-w-[1080px]">
+                      <thead>
+                        <tr className="border-b border-surface-200 bg-surface-50">
+                          {[
+                            "Employee",
+                            "Date",
+                            "Status",
+                            "Check In",
+                            "Check Out",
+                            "Hours",
+                            "Source",
+                            "Actions",
+                          ].map((h) => (
+                            <th
+                              key={h}
+                              className={`px-5 py-3 text-xs font-semibold uppercase tracking-wider text-surface-500 ${
+                                h === "Actions" ? "text-right" : "text-left"
+                              }`}
+                            >
+                              {h}
+                            </th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-surface-100">
+                        {records.map((record) => {
+                          const emp =
+                            record.employee || record.employeeId || {};
+                          return (
+                            <tr
+                              key={record._id}
+                              className="hover:bg-surface-50/80"
+                            >
+                              <td className="px-5 py-4">
+                                <p className="text-sm font-semibold text-gray-900">
+                                  {emp.name || "Unknown Employee"}
+                                </p>
+                                <p className="text-xs text-surface-400">
+                                  {emp.employeeId || "–"} ·{" "}
+                                  {emp.department || "No dept"}
+                                </p>
+                              </td>
+                              <td className="px-5 py-4 text-sm text-gray-700">
+                                {formatDate(record.date)}
+                              </td>
+                              <td className="px-5 py-4">
+                                <span
+                                  className={`status-badge ${getStatusTone(record.status)}`}
+                                >
+                                  {record.status}
+                                </span>
+                              </td>
+                              <td className="px-5 py-4 text-sm text-gray-700">
+                                {record.checkIn || "–"}
+                              </td>
+                              <td className="px-5 py-4 text-sm text-gray-700">
+                                {record.checkOut || "–"}
+                              </td>
+                              <td className="px-5 py-4 text-sm text-gray-700">
+                                {record.workingHours
+                                  ? `${record.workingHours} hrs`
+                                  : "–"}
+                              </td>
+                              <td className="px-5 py-4 text-sm capitalize text-gray-700">
+                                {record.source || "manual"}
+                              </td>
+                              <td className="px-5 py-4 text-right">
+                                <div className="flex justify-end gap-2">
+                                  <button
+                                    type="button"
+                                    onClick={() => openEdit(record)}
+                                    className="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-surface-200 text-surface-500 transition hover:border-brand-200 hover:bg-brand-50 hover:text-brand-700"
+                                    title="Edit record"
+                                  >
+                                    <Plus className="h-4 w-4 rotate-45" />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => setDeleteId(record._id)}
+                                    className="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-surface-200 text-surface-500 transition hover:border-red-200 hover:bg-red-50 hover:text-red-600"
+                                    title="Delete record"
+                                  >
+                                    <Trash2 className="h-4 w-4" />
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
                   </div>
                 )}
               </div>
-            </div>
-
-            {/* Summary bar */}
-            <div className="glass-card p-4 flex flex-wrap items-center gap-6">
-              <div>
-                <p className="text-xs text-purple-500 font-medium">Date</p>
-                <p className="text-sm font-semibold text-gray-900">
-                  {fmtDate(date)}
-                </p>
-              </div>
-              <div className="h-8 w-px bg-purple-100" />
-              <div>
-                <p className="text-xs text-purple-500 font-medium">
-                  Total Punches
-                </p>
-                <p className="text-sm font-semibold text-gray-900">
-                  {pagination.total ?? 0}
-                </p>
-              </div>
-              {filterDept && (
-                <>
-                  <div className="h-8 w-px bg-purple-100" />
-                  <div>
-                    <p className="text-xs text-purple-500 font-medium">
-                      Department Filter
-                    </p>
-                    <p className="text-sm font-semibold text-gray-900">
-                      {filterDept}
-                    </p>
-                  </div>
-                </>
-              )}
-            </div>
-
-            {/* Punch log table */}
-            <div className="glass-card overflow-hidden">
-              <div className="overflow-x-auto">
-                <table className="w-full">
-                  <thead>
-                    <tr className="border-b border-purple-100 bg-gradient-to-r from-purple-50 to-violet-50/60">
-                      {[
-                        "Employee",
-                        "Department",
-                        "Time",
-                        "Type",
-                        "Source",
-                        "Note",
-                        "Actions",
-                      ].map((h) => (
-                        <th
-                          key={h}
-                          className={`px-5 py-3.5 text-xs font-bold uppercase tracking-wider text-purple-700 ${h === "Actions" ? "text-right" : "text-left"}`}
-                        >
-                          {h}
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-purple-50/80">
-                    {loading ? (
-                      <tr>
-                        <td
-                          colSpan={7}
-                          className="text-center py-12 text-surface-400 text-sm"
-                        >
-                          Loading…
-                        </td>
-                      </tr>
-                    ) : logs.length === 0 ? (
-                      <tr>
-                        <td
-                          colSpan={7}
-                          className="text-center py-16 text-surface-400 text-sm"
-                        >
-                          <CalendarCheck className="w-10 h-10 mx-auto mb-3 text-surface-200" />
-                          No punch records for {fmtDate(date)}
-                          <div className="mt-3">
-                            <button
-                              onClick={openAdd}
-                              className="btn-primary text-xs"
+            ) : activeTab === "requests" ? (
+              /* ── Correction Requests tab ─────────────────────────────── */
+              <Card
+                title="Attendance Requests"
+                description="Employee regularization & time-correction requests for this month."
+              >
+                {/* Status filter chips */}
+                <div className="mb-4 flex flex-wrap items-center gap-2">
+                  {["all", "pending", "approved", "rejected"].map((s) => {
+                    const count =
+                      s === "all"
+                        ? correctionRequests.length
+                        : correctionRequests.filter((r) => r.status === s)
+                            .length;
+                    return (
+                      <button
+                        key={s}
+                        type="button"
+                        onClick={() => setRequestStatusFilter(s)}
+                        className={`rounded-full px-3 py-1.5 text-xs font-medium capitalize transition ${
+                          requestStatusFilter === s
+                            ? "bg-brand-600 text-white"
+                            : "bg-surface-100 text-surface-600 hover:bg-surface-200"
+                        }`}
+                      >
+                        {s} ({count})
+                      </button>
+                    );
+                  })}
+                </div>
+                {loading ? (
+                  <p className="text-sm text-surface-400">
+                    Loading requests…
+                  </p>
+                ) : visibleRequests.length ? (
+                  <div className="overflow-x-auto">
+                    <table className="w-full min-w-[900px]">
+                      <thead>
+                        <tr className="border-b border-surface-200 bg-surface-50">
+                          {[
+                            "Employee",
+                            "Date",
+                            "Category",
+                            "Current Times",
+                            "Requested Times",
+                            "Reason",
+                            "Status",
+                            "Actions",
+                          ].map((h) => (
+                            <th
+                              key={h}
+                              className={`px-4 py-3 text-xs font-semibold uppercase tracking-wider text-surface-500 ${h === "Actions" ? "text-right" : "text-left"}`}
                             >
-                              <Plus className="w-3.5 h-3.5" />
-                              Add Punch
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    ) : (
-                      logs.map((log) => (
-                        <tr
-                          key={log._id}
-                          className="hover:bg-purple-50/30 transition-colors group"
-                        >
-                          <td className="px-5 py-3.5">
-                            <div className="flex items-center gap-3">
-                              <div className="w-8 h-8 rounded-full bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center flex-shrink-0">
-                                <span className="text-xs font-bold text-white">
-                                  {log.employee?.name
-                                    ?.charAt(0)
-                                    ?.toUpperCase() || "?"}
-                                </span>
-                              </div>
-                              <div>
-                                <p className="text-sm font-medium text-gray-900">
-                                  {log.employee?.name || `ID: ${log.rawUserId}`}
+                              {h}
+                            </th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-surface-100">
+                        {visibleRequests.map((req) => {
+                          const emp = req.employeeId || {};
+                          const att = req.attendanceId || {};
+                          const statusTone = {
+                            pending: "bg-amber-100 text-amber-700",
+                            approved: "bg-green-100 text-green-700",
+                            rejected: "bg-red-100 text-red-700",
+                          }[req.status] || "";
+                          return (
+                            <tr key={req._id} className="hover:bg-surface-50/80">
+                              <td className="px-4 py-3">
+                                <p className="text-sm font-semibold text-gray-900">
+                                  {emp.name || "—"}
                                 </p>
                                 <p className="text-xs text-surface-400">
-                                  {log.employee?.email}
+                                  {emp.employeeId || ""} · {emp.department || ""}
                                 </p>
-                              </div>
-                            </div>
-                          </td>
-                          <td className="px-5 py-3.5 text-sm text-gray-700">
-                            {log.employee?.department || "—"}
-                          </td>
-                          <td className="px-5 py-3.5 text-sm font-mono text-gray-900">
-                            {fmtTime(log.timestamp)}
-                          </td>
-                          <td className="px-5 py-3.5">
-                            <span
-                              className={`status-badge ${PUNCH_STATUS_COLORS[log.status] || "bg-surface-100 text-surface-500"}`}
+                              </td>
+                              <td className="px-4 py-3 text-sm text-gray-700 whitespace-nowrap">
+                                {formatDate(req.date)}
+                              </td>
+                              <td className="px-4 py-3">
+                                <span
+                                  className={`inline-block rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${
+                                    req.type === "present"
+                                      ? "bg-green-100 text-green-700"
+                                      : "bg-surface-100 text-surface-600"
+                                  }`}
+                                >
+                                  {req.type === "present"
+                                    ? getRegularizationCategoryLabel(
+                                        req.category,
+                                      )
+                                    : "Time Correction"}
+                                </span>
+                              </td>
+                              <td className="px-4 py-3 text-sm text-gray-700">
+                                <span className="block">In: {att.checkIn || "—"}</span>
+                                <span className="block">Out: {att.checkOut || "—"}</span>
+                              </td>
+                              <td className="px-4 py-3 text-sm text-gray-700">
+                                {req.requestedCheckIn && (
+                                  <span className="block text-brand-700 font-medium">
+                                    In: {req.requestedCheckIn}
+                                  </span>
+                                )}
+                                {req.requestedCheckOut && (
+                                  <span className="block text-brand-700 font-medium">
+                                    Out: {req.requestedCheckOut}
+                                  </span>
+                                )}
+                                {req.type === "present" &&
+                                  !req.requestedCheckIn &&
+                                  !req.requestedCheckOut && (
+                                    <span className="block text-xs text-surface-400">
+                                      Default office hours
+                                    </span>
+                                  )}
+                              </td>
+                              <td className="px-4 py-3 text-sm text-gray-700 max-w-[200px]">
+                                <span className="line-clamp-2">{req.reason}</span>
+                                {req.hrComment && (
+                                  <span className="block text-xs text-surface-400 mt-0.5">
+                                    HR: {req.hrComment}
+                                  </span>
+                                )}
+                              </td>
+                              <td className="px-4 py-3">
+                                <span className={`status-badge ${statusTone}`}>
+                                  {req.status}
+                                </span>
+                              </td>
+                              <td className="px-4 py-3 text-right">
+                                {req.status === "pending" ? (
+                                  <div className="flex justify-end gap-2">
+                                    <button
+                                      type="button"
+                                      onClick={() => openReview(req, "approve")}
+                                      className="inline-flex items-center gap-1 rounded-xl border border-green-200 bg-green-50 px-3 py-1.5 text-xs font-medium text-green-700 transition hover:bg-green-100"
+                                    >
+                                      Approve
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => openReview(req, "reject")}
+                                      className="inline-flex items-center gap-1 rounded-xl border border-red-200 bg-red-50 px-3 py-1.5 text-xs font-medium text-red-600 transition hover:bg-red-100"
+                                    >
+                                      Reject
+                                    </button>
+                                  </div>
+                                ) : (
+                                  <span className="text-xs text-surface-300">
+                                    {req.reviewedBy?.name
+                                      ? `by ${req.reviewedBy.name}`
+                                      : "reviewed"}
+                                  </span>
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <EmptyState
+                    icon={Clock}
+                    title="No correction requests"
+                    description="Employee time correction requests for this month will appear here."
+                  />
+                )}
+              </Card>
+            ) : (
+              /* Import logs tab */
+              <Card
+                title="Import History"
+                description="Recent attendance import runs with processing details."
+              >
+                {loading ? (
+                  <p className="text-sm text-surface-400">
+                    Loading import history…
+                  </p>
+                ) : importLogs.length ? (
+                  <div className="overflow-x-auto">
+                    <table className="w-full min-w-[900px]">
+                      <thead>
+                        <tr className="border-b border-surface-200 bg-surface-50">
+                          {[
+                            "Imported At",
+                            "File",
+                            "Status",
+                            "Inserted",
+                            "Skipped",
+                            "Unmapped",
+                            "Imported By",
+                          ].map((h) => (
+                            <th
+                              key={h}
+                              className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-surface-500"
                             >
-                              {log.status}
-                            </span>
-                          </td>
-                          <td className="px-5 py-3.5">
-                            <span
-                              className={`status-badge text-[10px] ${SOURCE_BADGE[log.source] || "bg-surface-100 text-surface-400"}`}
-                            >
-                              {log.source === "csv-import" ||
-                              log.source === "excel-upload"
-                                ? "Import"
-                                : "Manual"}
-                            </span>
-                          </td>
-                          <td className="px-5 py-3.5 text-xs text-surface-400 max-w-[160px] truncate">
-                            {log.note || "—"}
-                          </td>
-                          <td className="px-5 py-3.5 text-right">
-                            <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                              <button
-                                onClick={() => openEdit(log)}
-                                className="p-1.5 hover:bg-purple-50 rounded-lg text-surface-400 hover:text-purple-700"
-                                title="Edit"
-                              >
-                                <Edit2 className="w-3.5 h-3.5" />
-                              </button>
-                              <button
-                                onClick={() => setDeleteId(log._id)}
-                                className="p-1.5 hover:bg-red-50 rounded-lg text-surface-400 hover:text-red-600"
-                                title="Delete"
-                              >
-                                <Trash2 className="w-3.5 h-3.5" />
-                              </button>
-                            </div>
-                          </td>
+                              {h}
+                            </th>
+                          ))}
                         </tr>
-                      ))
+                      </thead>
+                      <tbody className="divide-y divide-surface-100">
+                        {importLogs.map((log) => (
+                          <tr key={log._id} className="hover:bg-surface-50/80">
+                            <td className="px-4 py-3 text-sm text-gray-700">
+                              {formatDate(log.createdAt)}
+                            </td>
+                            <td
+                              className="px-4 py-3 text-sm text-gray-700 max-w-[220px] truncate"
+                              title={log.fileName}
+                            >
+                              {log.fileName || "–"}
+                            </td>
+                            <td className="px-4 py-3">
+                              <span
+                                className={`status-badge ${getStatusTone(log.status)}`}
+                              >
+                                {log.status}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3 text-sm text-gray-700">
+                              {log.recordsInserted}
+                            </td>
+                            <td className="px-4 py-3 text-sm text-gray-700">
+                              {log.recordsSkipped}
+                            </td>
+                            <td className="px-4 py-3 text-sm text-gray-700">
+                              {log.recordsUnmapped}
+                            </td>
+                            <td className="px-4 py-3 text-sm text-gray-700">
+                              {log.importedBy?.name || "–"}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <EmptyState
+                    icon={Download}
+                    title="No imports yet"
+                    description="Imported attendance files will appear here with processing details."
+                  />
+                )}
+              </Card>
+            )}
+          </>
+        ) : (
+          /* ── Employee view ──────────────────────────────────────────────── */
+          <>
+            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+              <StatCard
+                icon={CalendarCheck}
+                label="Present"
+                value={
+                  records.filter((r) =>
+                    ["present", "wfh", "on-duty"].includes(r.status),
+                  ).length
+                }
+                tone="bg-green-100 text-green-700"
+                subtext="Present, WFH & on-duty days"
+              />
+              <StatCard
+                icon={CalendarCheck}
+                label="Late"
+                value={records.filter((r) => r.status === "late").length}
+                tone="bg-amber-100 text-amber-700"
+                subtext="Late arrivals this month"
+              />
+              <StatCard
+                icon={CalendarCheck}
+                label="Leave"
+                value={
+                  records.filter((r) =>
+                    ["leave", "half-day"].includes(r.status),
+                  ).length
+                }
+                tone="bg-blue-100 text-blue-700"
+                subtext="Leave and half-day records"
+              />
+              <StatCard
+                icon={CalendarCheck}
+                label="Holidays"
+                value={holidays.length}
+                tone="bg-surface-100 text-surface-500"
+                subtext="Published holidays in month"
+              />
+            </div>
+
+            {/* Tab switcher: Calendar | Regularization */}
+            <div className="glass-card p-2">
+              <div className="flex rounded-2xl bg-surface-100 p-1">
+                {[
+                  { id: "calendar", label: "Calendar" },
+                  {
+                    id: "regularization",
+                    label: "Regularization",
+                    badge: myRequests.filter((r) => r.status === "pending")
+                      .length,
+                  },
+                ].map(({ id, label, badge }) => (
+                  <button
+                    key={id}
+                    type="button"
+                    onClick={() => setEmpTab(id)}
+                    className={`relative flex-1 rounded-xl px-3 py-2 text-sm font-medium transition ${
+                      empTab === id
+                        ? "bg-white text-gray-900 shadow-sm"
+                        : "text-surface-500 hover:text-gray-700"
+                    }`}
+                  >
+                    {label}
+                    {badge > 0 && (
+                      <span className="ml-1.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white">
+                        {badge}
+                      </span>
                     )}
-                  </tbody>
-                </table>
+                  </button>
+                ))}
               </div>
             </div>
-          </>
-        )}
 
-        {/* ── CORRECTION REQUESTS ── */}
-        {tab === "requests" && (
-          <div className="glass-card overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead>
-                  <tr className="border-b border-purple-100 bg-gradient-to-r from-purple-50 to-violet-50/60">
-                    {[
-                      "Employee",
-                      "Date",
-                      "Current Times",
-                      "Requested Times",
-                      "Reason",
-                      "Status",
-                      "Actions",
-                    ].map((h) => (
-                      <th
-                        key={h}
-                        className={`text-xs font-bold text-purple-700 uppercase tracking-wider px-5 py-3.5 ${h === "Actions" ? "text-right" : "text-left"}`}
-                      >
-                        {h}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-purple-50/80">
-                  {correctionLoading ? (
-                    <tr>
-                      <td
-                        colSpan={7}
-                        className="text-center py-12 text-surface-400 text-sm"
-                      >
-                        Loading…
-                      </td>
-                    </tr>
-                  ) : correctionRequests.length === 0 ? (
-                    <tr>
-                      <td
-                        colSpan={7}
-                        className="text-center py-16 text-surface-400 text-sm"
-                      >
-                        <Clock className="w-10 h-10 mx-auto mb-3 text-surface-200" />
-                        No correction requests yet.
-                      </td>
-                    </tr>
-                  ) : (
-                    correctionRequests.map((req) => {
-                      const emp = req.employeeId || {};
-                      const att = req.attendanceId || {};
-                      const statusTone =
-                        {
-                          pending: "bg-amber-100 text-amber-700",
-                          approved: "bg-green-100 text-green-700",
-                          rejected: "bg-red-100 text-red-700",
-                        }[req.status] || "";
-                      return (
-                        <tr
-                          key={req._id}
-                          className="hover:bg-purple-50/30 transition-colors"
-                        >
-                          <td className="px-5 py-3.5">
-                            <p className="text-sm font-medium text-gray-900">
-                              {emp.name || "—"}
-                            </p>
-                            <p className="text-xs text-surface-400">
-                              {emp.employeeId} · {emp.department}
-                            </p>
+            {empTab === "calendar" ? (
+              <>
+            <Card
+              title="Monthly Attendance Calendar"
+              description="Select any date to view check-in, check-out, and holiday details."
+            >
+              {loading ? (
+                <p className="text-sm text-surface-400">
+                  Loading your attendance calendar…
+                </p>
+              ) : (
+                <AttendanceCalendar
+                  year={monthState.year}
+                  month={monthState.month}
+                  records={records}
+                  holidays={holidays}
+                  selectedDate={selectedDate}
+                  onSelectDate={setSelectedDate}
+                  onRequest={openRequest}
+                />
+              )}
+            </Card>
+
+            <Card
+              title="Attendance Highlights"
+              description="Daily records for the selected month."
+            >
+              {records.length ? (
+                <div className="overflow-x-auto">
+                  <table className="w-full min-w-[700px]">
+                    <thead>
+                      <tr className="border-b border-surface-200 bg-surface-50">
+                        {[
+                          "Date",
+                          "Status",
+                          "Check In",
+                          "Check Out",
+                          "Working Hours",
+                          "Note",
+                        ].map((h) => (
+                          <th
+                            key={h}
+                            className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-surface-500"
+                          >
+                            {h}
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-surface-100">
+                      {records.map((record) => (
+                        <tr key={record._id} className="hover:bg-surface-50/80">
+                          <td className="px-4 py-3 text-sm text-gray-700">
+                            {formatDate(record.date)}
                           </td>
-                          <td className="px-5 py-3.5 text-sm text-gray-700 whitespace-nowrap">
-                            {fmtDate(req.date)}
-                          </td>
-                          <td className="px-5 py-3.5 text-sm text-gray-700">
-                            <span className="block">
-                              In: {att.checkIn || "—"}
-                            </span>
-                            <span className="block">
-                              Out: {att.checkOut || "—"}
+                          <td className="px-4 py-3">
+                            <span
+                              className={`status-badge ${getStatusTone(record.status)}`}
+                            >
+                              {record.status}
                             </span>
                           </td>
-                          <td className="px-5 py-3.5 text-sm">
-                            {req.requestedCheckIn && (
-                              <span className="block font-medium text-purple-700">
-                                In: {req.requestedCheckIn}
-                              </span>
-                            )}
-                            {req.requestedCheckOut && (
-                              <span className="block font-medium text-purple-700">
-                                Out: {req.requestedCheckOut}
-                              </span>
-                            )}
+                          <td className="px-4 py-3 text-sm text-gray-700">
+                            {record.checkIn || "–"}
                           </td>
-                          <td className="px-5 py-3.5 text-sm text-gray-700 max-w-[200px]">
-                            <span className="line-clamp-2">{req.reason}</span>
-                            {req.hrComment && (
-                              <span className="block text-xs text-surface-400 mt-0.5">
-                                HR: {req.hrComment}
-                              </span>
-                            )}
+                          <td className="px-4 py-3 text-sm text-gray-700">
+                            {record.checkOut || "–"}
                           </td>
-                          <td className="px-5 py-3.5">
-                            <span className={`status-badge ${statusTone}`}>
-                              {req.status}
-                            </span>
+                          <td className="px-4 py-3 text-sm text-gray-700">
+                            {record.workingHours
+                              ? `${record.workingHours} hrs`
+                              : "–"}
                           </td>
-                          <td className="px-5 py-3.5 text-right">
-                            {req.status === "pending" ? (
-                              <div className="flex justify-end gap-2">
-                                <button
-                                  onClick={() => {
-                                    setReviewModal({ req, action: "approve" });
-                                    setHrComment("");
-                                  }}
-                                  className="inline-flex items-center gap-1 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-medium text-emerald-700 transition hover:bg-emerald-100"
-                                >
-                                  Approve
-                                </button>
-                                <button
-                                  onClick={() => {
-                                    setReviewModal({ req, action: "reject" });
-                                    setHrComment("");
-                                  }}
-                                  className="inline-flex items-center gap-1 rounded-xl border border-red-200 bg-red-50 px-3 py-1.5 text-xs font-medium text-red-600 transition hover:bg-red-100"
-                                >
-                                  Reject
-                                </button>
-                              </div>
-                            ) : (
-                              <span className="text-xs text-surface-300">
-                                {req.reviewedBy?.name
-                                  ? `by ${req.reviewedBy.name}`
-                                  : "reviewed"}
-                              </span>
-                            )}
+                          <td className="px-4 py-3 text-sm text-gray-700">
+                            {record.note || "–"}
                           </td>
                         </tr>
-                      );
-                    })
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        )}
-
-        {/* ── IMPORT HISTORY ── */}
-        {tab === "history" && (
-          <div className="glass-card overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead>
-                  <tr className="border-b border-purple-100 bg-gradient-to-r from-purple-50 to-violet-50/60">
-                    {[
-                      "Imported At",
-                      "File",
-                      "Imported By",
-                      "Status",
-                      "Inserted",
-                      "Skipped",
-                      "Unmapped",
-                      "Issues",
-                    ].map((h) => (
-                      <th
-                        key={h}
-                        className="text-left text-xs font-bold text-purple-700 uppercase tracking-wider px-5 py-3.5"
-                      >
-                        {h}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-purple-50/80">
-                  {importLogsLoading ? (
-                    <tr>
-                      <td
-                        colSpan={8}
-                        className="text-center py-12 text-surface-400 text-sm"
-                      >
-                        Loading…
-                      </td>
-                    </tr>
-                  ) : importLogs.length === 0 ? (
-                    <tr>
-                      <td
-                        colSpan={8}
-                        className="text-center py-12 text-surface-400 text-sm"
-                      >
-                        No import records yet.
-                      </td>
-                    </tr>
-                  ) : (
-                    importLogs.map((il) => (
-                      <tr
-                        key={il._id}
-                        className="hover:bg-purple-50/30 transition-colors"
-                      >
-                        <td className="px-5 py-3.5 text-sm text-gray-900 whitespace-nowrap">
-                          {fmtDT(il.createdAt)}
-                        </td>
-                        <td className="px-5 py-3.5 text-xs font-mono text-surface-500 max-w-[180px] truncate">
-                          {il.fileName || "—"}
-                        </td>
-                        <td className="px-5 py-3.5 text-sm text-gray-700">
-                          {il.importedBy?.name || "—"}
-                        </td>
-                        <td className="px-5 py-3.5">
-                          <span
-                            className={`status-badge ${
-                              il.status === "success"
-                                ? "bg-green-100 text-green-700"
-                                : il.status === "partial"
-                                  ? "bg-amber-100 text-amber-700"
-                                  : "bg-red-100 text-red-700"
-                            }`}
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <EmptyState
+                  icon={CalendarCheck}
+                  title="No attendance records available"
+                  description="Your attendance will appear here once records are available for the selected month."
+                />
+              )}
+            </Card>
+              </>
+            ) : (
+              <Card
+                title="Attendance Regularization"
+                description={`Raise a request to be marked present on a day you missed punching (within the last ${REGULARIZATION_WINDOW_DAYS} days). HR will review and approve it.`}
+                action={
+                  <button
+                    type="button"
+                    onClick={() => openRequest(null, "present", true)}
+                    className="btn-primary text-sm"
+                  >
+                    <Plus className="h-4 w-4" />
+                    New Regularization
+                  </button>
+                }
+              >
+              {myRequests.length ? (
+                <div className="overflow-x-auto">
+                  <table className="w-full min-w-[680px]">
+                    <thead>
+                      <tr className="border-b border-surface-200 bg-surface-50">
+                        {[
+                          "Date",
+                          "Category",
+                          "Requested Times",
+                          "Reason",
+                          "Status",
+                          "HR Comment",
+                        ].map((h) => (
+                          <th
+                            key={h}
+                            className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-surface-500"
                           >
-                            {il.status}
-                          </span>
-                        </td>
-                        <td className="px-5 py-3.5 text-sm font-mono text-green-700">
-                          {il.recordsInserted}
-                        </td>
-                        <td className="px-5 py-3.5 text-sm font-mono text-surface-400">
-                          {il.recordsSkipped}
-                        </td>
-                        <td className="px-5 py-3.5 text-sm font-mono text-amber-600">
-                          {il.recordsUnmapped}
-                        </td>
-                        <td className="px-5 py-3.5 text-xs text-red-600 max-w-[200px] truncate">
-                          {il.errorMessage || "—"}
-                        </td>
+                            {h}
+                          </th>
+                        ))}
                       </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </div>
+                    </thead>
+                    <tbody className="divide-y divide-surface-100">
+                      {myRequests.map((req) => {
+                        const statusTone =
+                          {
+                            pending: "bg-amber-100 text-amber-700",
+                            approved: "bg-green-100 text-green-700",
+                            rejected: "bg-red-100 text-red-700",
+                          }[req.status] || "bg-surface-100 text-surface-500";
+                        return (
+                          <tr key={req._id} className="hover:bg-surface-50/80">
+                            <td className="px-4 py-3 text-sm text-gray-700 whitespace-nowrap">
+                              {formatDate(req.date)}
+                            </td>
+                            <td className="px-4 py-3">
+                              <span className="status-badge bg-surface-100 text-surface-600">
+                                {req.type === "present"
+                                  ? getRegularizationCategoryLabel(req.category)
+                                  : "Time Correction"}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3 text-sm text-gray-700">
+                              {req.requestedCheckIn || req.requestedCheckOut ? (
+                                <>
+                                  {req.requestedCheckIn && (
+                                    <span className="block">
+                                      In: {req.requestedCheckIn}
+                                    </span>
+                                  )}
+                                  {req.requestedCheckOut && (
+                                    <span className="block">
+                                      Out: {req.requestedCheckOut}
+                                    </span>
+                                  )}
+                                </>
+                              ) : (
+                                "–"
+                              )}
+                            </td>
+                            <td className="px-4 py-3 text-sm text-gray-700 max-w-[220px]">
+                              <span className="line-clamp-2">{req.reason}</span>
+                            </td>
+                            <td className="px-4 py-3">
+                              <span className={`status-badge ${statusTone}`}>
+                                {req.status}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3 text-sm text-surface-500 max-w-[180px]">
+                              <span className="line-clamp-2">
+                                {req.hrComment || "–"}
+                              </span>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <EmptyState
+                  icon={Clock}
+                  title="No requests yet"
+                  description="Raise a regularization request for a day you missed, or use Request Present on the calendar."
+                  action={
+                    <button
+                      type="button"
+                      onClick={() => openRequest(null, "present", true)}
+                      className="btn-primary text-sm"
+                    >
+                      <Plus className="h-4 w-4" />
+                      New Regularization
+                    </button>
+                  }
+                />
+              )}
+            </Card>
+            )}
+          </>
         )}
       </div>
 
-      {/* ═══════════════ ADD / EDIT PUNCH MODAL ═══════════════ */}
-      {punchModal && (
-        <div
-          className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4"
-          onClick={() => setPunchModal(false)}
-        >
-          <div
-            className="bg-white rounded-[28px] w-full max-w-md shadow-xl overflow-hidden"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <ModalHeader
-              title={editingLog ? "Edit Punch Entry" : "Add Punch Entry"}
-              description={
-                editingLog
-                  ? `Editing record for ${editingLog.employee?.name}`
-                  : "Add a manual attendance punch"
-              }
-              onClose={() => setPunchModal(false)}
-              gradient="from-violet-600 to-purple-700"
-            />
+      {/* ════════════════════════════════════════════════════════════════════════
+          IMPORT MODAL
+          Three modes: Daily Biometric XLS | Monthly Pivot Excel | Standard CSV/Excel
+      ════════════════════════════════════════════════════════════════════════ */}
+      {showImport && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm">
+          <div className="relative w-full max-w-xl rounded-3xl bg-white shadow-2xl">
+            {/* Modal header */}
+            <div className="flex items-center justify-between border-b border-surface-200 px-6 py-5">
+              <div>
+                <h2 className="font-display text-xl font-bold text-gray-900">
+                  Import Attendance
+                </h2>
+                <p className="mt-0.5 text-sm text-surface-400">
+                  Choose the file type that matches your export.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={closeImport}
+                disabled={importing}
+                className="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-surface-200 text-surface-500 transition hover:bg-surface-50 disabled:opacity-40"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
 
-            <form onSubmit={handlePunchSubmit} className="p-6 space-y-4">
-              {/* Employee — only in add mode */}
-              {!editingLog ? (
-                <div className="relative">
-                  <label className="block text-xs font-semibold text-surface-500 uppercase tracking-wider mb-1.5">
-                    Employee *
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="Search by name or email…"
-                    value={empSearch}
-                    onFocus={() => setShowEmpDrop(true)}
-                    onChange={(e) => {
-                      setEmpSearch(e.target.value);
-                      setPunchForm((f) => ({ ...f, employeeId: "" }));
-                      setShowEmpDrop(true);
-                    }}
-                    className="input-field"
-                    required={!punchForm.employeeId}
-                    autoComplete="off"
-                  />
-                  {punchForm.employeeId && (
-                    <CheckCircle2 className="w-4 h-4 text-green-500 absolute right-3 top-9" />
-                  )}
-                  {showEmpDrop && filteredEmps.length > 0 && (
-                    <div className="absolute z-10 left-0 right-0 mt-1 bg-white border border-surface-200 rounded-xl shadow-lg overflow-hidden">
-                      {filteredEmps.map((emp) => (
-                        <button
-                          key={emp._id}
-                          type="button"
-                          className="w-full text-left px-4 py-2.5 hover:bg-purple-50 text-sm flex items-center gap-3"
-                          onClick={() => {
-                            setPunchForm((f) => ({
-                              ...f,
-                              employeeId: emp._id,
-                            }));
-                            setEmpSearch(emp.name);
-                            setShowEmpDrop(false);
-                          }}
+            <div className="space-y-5 px-6 py-5">
+              {/* ── Type selector cards ─────────────────────────────────────── */}
+              {!importResult && (
+                <div className="grid gap-3">
+                  {IMPORT_TYPES.map(
+                    ({ id, label, icon: Icon, description }) => (
+                      <button
+                        key={id}
+                        type="button"
+                        onClick={() => {
+                          setImportType(id);
+                          setSelectedFile(null);
+                          if (fileInputRef.current)
+                            fileInputRef.current.value = "";
+                        }}
+                        className={`flex items-start gap-4 rounded-2xl border-2 p-4 text-left transition ${
+                          importType === id
+                            ? "border-brand-500 bg-brand-50"
+                            : "border-surface-200 hover:border-surface-300 hover:bg-surface-50"
+                        }`}
+                      >
+                        <div
+                          className={`mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${
+                            importType === id
+                              ? "bg-brand-100 text-brand-700"
+                              : "bg-surface-100 text-surface-500"
+                          }`}
                         >
-                          <div className="w-7 h-7 rounded-full bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center flex-shrink-0">
-                            <span className="text-[10px] font-bold text-white">
-                              {emp.name.charAt(0)}
-                            </span>
-                          </div>
-                          <div>
-                            <p className="font-medium text-gray-900">
-                              {emp.name}
-                            </p>
-                            <p className="text-xs text-surface-400">
-                              {emp.department || emp.email}
-                            </p>
-                          </div>
-                        </button>
-                      ))}
-                    </div>
+                          <Icon className="h-4 w-4" />
+                        </div>
+                        <div>
+                          <p
+                            className={`text-sm font-semibold ${importType === id ? "text-brand-700" : "text-gray-900"}`}
+                          >
+                            {label}
+                          </p>
+                          <p className="mt-0.5 text-xs leading-relaxed text-surface-400">
+                            {description}
+                          </p>
+                        </div>
+                      </button>
+                    ),
                   )}
                 </div>
-              ) : (
-                <div>
-                  <label className="block text-xs font-semibold text-surface-500 uppercase tracking-wider mb-1.5">
-                    Employee
-                  </label>
-                  <div className="input-field bg-surface-50 text-gray-500 cursor-not-allowed">
-                    {editingLog.employee?.name}
+              )}
+
+              {/* ── Month / year picker (monthly import only) ──────────────── */}
+              {!importResult && importType === "monthly" && (
+                <div className="rounded-2xl bg-amber-50 border border-amber-200 p-4 space-y-3">
+                  <p className="text-sm font-medium text-amber-800">
+                    Select the month &amp; year this file covers
+                  </p>
+                  <div className="grid grid-cols-2 gap-3">
+                    <select
+                      value={importMonth}
+                      onChange={(e) => setImportMonth(Number(e.target.value))}
+                      className="input-field"
+                    >
+                      {getMonthOptions().map((o) => (
+                        <option key={o.value} value={o.value}>
+                          {o.label}
+                        </option>
+                      ))}
+                    </select>
+                    <select
+                      value={importYear}
+                      onChange={(e) => setImportYear(Number(e.target.value))}
+                      className="input-field"
+                    >
+                      {getYearOptions(4).map((y) => (
+                        <option key={y} value={y}>
+                          {y}
+                        </option>
+                      ))}
+                    </select>
                   </div>
                 </div>
               )}
 
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-semibold text-surface-500 uppercase tracking-wider mb-1.5">
-                    Date *
-                  </label>
-                  <input
-                    type="date"
-                    required
-                    value={punchForm.date}
-                    onChange={(e) =>
-                      setPunchForm((f) => ({ ...f, date: e.target.value }))
-                    }
-                    className="input-field"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-surface-500 uppercase tracking-wider mb-1.5">
-                    Time *
-                  </label>
-                  <input
-                    type="time"
-                    required
-                    value={punchForm.time}
-                    onChange={(e) =>
-                      setPunchForm((f) => ({ ...f, time: e.target.value }))
-                    }
-                    className="input-field"
-                  />
-                </div>
-              </div>
+              {/* ── File picker ─────────────────────────────────────────────── */}
+              {!importResult && (
+                <>
+                  <div>
+                    <p className="mb-1.5 text-xs font-medium text-surface-500 uppercase tracking-wider">
+                      {IMPORT_TYPES.find((t) => t.id === importType)?.hint}
+                    </p>
+                    <label
+                      className={`flex cursor-pointer flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed p-8 text-center transition ${
+                        selectedFile
+                          ? "border-brand-300 bg-brand-50"
+                          : "border-surface-300 hover:border-brand-300 hover:bg-brand-50/40"
+                      }`}
+                    >
+                      <FileUp
+                        className={`h-8 w-8 ${selectedFile ? "text-brand-500" : "text-surface-400"}`}
+                      />
+                      {selectedFile ? (
+                        <>
+                          <span className="text-sm font-semibold text-brand-700">
+                            {selectedFile.name}
+                          </span>
+                          <span className="text-xs text-surface-400">
+                            {(selectedFile.size / 1024).toFixed(1)} KB · Click
+                            to change file
+                          </span>
+                        </>
+                      ) : (
+                        <>
+                          <span className="text-sm font-medium text-gray-700">
+                            Click to choose a file
+                          </span>
+                          <span className="text-xs text-surface-400">
+                            {importType === "standard"
+                              ? ".csv, .xlsx, .xls accepted"
+                              : ".xls, .xlsx accepted"}
+                          </span>
+                        </>
+                      )}
+                      <input
+                        ref={fileInputRef}
+                        type="file"
+                        className="sr-only"
+                        accept={
+                          importType === "standard"
+                            ? ".csv,.xlsx,.xls"
+                            : ".xls,.xlsx"
+                        }
+                        onChange={handleFileChange}
+                        disabled={importing}
+                      />
+                    </label>
+                  </div>
 
+                  <button
+                    type="button"
+                    onClick={handleImport}
+                    disabled={importing || !selectedFile}
+                    className="btn-primary w-full justify-center text-sm disabled:opacity-50"
+                  >
+                    {importing ? (
+                      <>
+                        <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+                        Importing…
+                      </>
+                    ) : (
+                      <>
+                        <Upload className="h-4 w-4" />
+                        Import{" "}
+                        {IMPORT_TYPES.find((t) => t.id === importType)?.label}
+                      </>
+                    )}
+                  </button>
+                </>
+              )}
+
+              {/* ── Import result ───────────────────────────────────────────── */}
+              {importResult && (
+                <div className="space-y-4">
+                  {importResult.error ? (
+                    <div className="flex gap-3 rounded-2xl bg-red-50 border border-red-200 p-4">
+                      <AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-red-500" />
+                      <div>
+                        <p className="text-sm font-semibold text-red-700">
+                          Import failed
+                        </p>
+                        <p className="mt-0.5 text-sm text-red-600">
+                          {importResult.message}
+                        </p>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex gap-3 rounded-2xl bg-green-50 border border-green-200 p-4">
+                      <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-green-600" />
+                      <div>
+                        <p className="text-sm font-semibold text-green-700">
+                          Import complete
+                        </p>
+                        <p className="mt-0.5 text-sm text-green-600">
+                          {importResult.message}
+                        </p>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Result breakdown */}
+                  {!importResult.error && (
+                    <div className="grid grid-cols-3 gap-3">
+                      {[
+                        {
+                          label: "Inserted",
+                          value: importResult.inserted ?? 0,
+                          color: "text-green-700 bg-green-50",
+                        },
+                        {
+                          label: "Skipped",
+                          value: importResult.skipped ?? 0,
+                          color: "text-amber-700 bg-amber-50",
+                        },
+                        {
+                          label: "Unmapped",
+                          value: importResult.unmapped ?? 0,
+                          color: "text-red-700 bg-red-50",
+                        },
+                      ].map(({ label, value, color }) => (
+                        <div
+                          key={label}
+                          className={`rounded-2xl p-3 text-center ${color}`}
+                        >
+                          <p className="text-xl font-bold">{value}</p>
+                          <p className="text-xs font-medium">{label}</p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Unmapped IDs */}
+                  {importResult.unmappedIds?.length > 0 && (
+                    <div className="rounded-2xl bg-surface-50 p-3">
+                      <p className="mb-1.5 text-xs font-semibold uppercase tracking-wider text-surface-500">
+                        Unmapped employee codes
+                      </p>
+                      <p className="text-xs text-gray-700 break-words">
+                        {importResult.unmappedIds.slice(0, 20).join(", ")}
+                        {importResult.unmappedIds.length > 20 &&
+                          ` …and ${importResult.unmappedIds.length - 20} more`}
+                      </p>
+                    </div>
+                  )}
+
+                  {/* Row-level errors */}
+                  {importResult.errors?.length > 0 && (
+                    <div className="rounded-2xl bg-surface-50 p-3">
+                      <p className="mb-1.5 text-xs font-semibold uppercase tracking-wider text-surface-500">
+                        Row errors (first{" "}
+                        {Math.min(importResult.errors.length, 10)})
+                      </p>
+                      <ul className="space-y-1">
+                        {importResult.errors.slice(0, 10).map((e, i) => (
+                          <li key={i} className="text-xs text-red-600">
+                            {e}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+
+                  {/* Action buttons */}
+                  <div className="flex gap-3 pt-1">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setImportResult(null);
+                        setSelectedFile(null);
+                        if (fileInputRef.current)
+                          fileInputRef.current.value = "";
+                      }}
+                      className="btn-secondary flex-1 justify-center text-sm"
+                    >
+                      Import Another File
+                    </button>
+                    <button
+                      type="button"
+                      onClick={closeImport}
+                      className="btn-primary flex-1 justify-center text-sm"
+                    >
+                      Done
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ════════════════════════════════════════════════════════════════════════
+          RECORD FORM MODAL  (Create / Edit)
+      ════════════════════════════════════════════════════════════════════════ */}
+      {showForm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm">
+          <div className="relative w-full max-w-lg rounded-3xl bg-white shadow-2xl">
+            <div className="flex items-center justify-between border-b border-surface-200 px-6 py-5">
+              <h2 className="font-display text-xl font-bold text-gray-900">
+                {editRecord
+                  ? "Edit Attendance Record"
+                  : "New Attendance Record"}
+              </h2>
+              <button
+                type="button"
+                onClick={() => setShowForm(false)}
+                disabled={saving}
+                className="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-surface-200 text-surface-500 transition hover:bg-surface-50 disabled:opacity-40"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveRecord} className="space-y-4 px-6 py-5">
+              {/* Employee select */}
               <div>
-                <label className="block text-xs font-semibold text-surface-500 uppercase tracking-wider mb-1.5">
-                  Type *
-                </label>
+                <label className="label-text">Employee</label>
                 <select
-                  required
-                  value={punchForm.status}
+                  value={form.employeeId}
                   onChange={(e) =>
-                    setPunchForm((f) => ({ ...f, status: e.target.value }))
+                    setForm((f) => ({ ...f, employeeId: e.target.value }))
                   }
+                  required
                   className="input-field"
+                  disabled={!!editRecord}
                 >
-                  {PUNCH_STATUS_OPTIONS.map((s) => (
-                    <option key={s} value={s}>
-                      {s
-                        .replace(/-/g, " ")
-                        .replace(/\b\w/g, (c) => c.toUpperCase())}
+                  <option value="">Select employee…</option>
+                  {employees.map((emp) => (
+                    <option key={emp._id} value={emp._id}>
+                      {emp.employeeId || "Auto"} – {emp.name} (
+                      {emp.department || "No dept"})
                     </option>
                   ))}
                 </select>
               </div>
 
+              {/* Date */}
               <div>
-                <label className="block text-xs font-semibold text-surface-500 uppercase tracking-wider mb-1.5">
-                  Note{" "}
-                  <span className="text-surface-300 normal-case font-normal">
-                    (optional)
-                  </span>
-                </label>
+                <label className="label-text">Date</label>
                 <input
-                  type="text"
-                  value={punchForm.note}
+                  type="date"
+                  value={form.date}
                   onChange={(e) =>
-                    setPunchForm((f) => ({ ...f, note: e.target.value }))
+                    setForm((f) => ({ ...f, date: e.target.value }))
                   }
+                  required
                   className="input-field"
-                  placeholder="e.g. Forgot to punch in"
-                  maxLength={300}
                 />
               </div>
 
-              <div className="flex gap-3 justify-end pt-2">
+              {/* Status */}
+              <div>
+                <label className="label-text">Status</label>
+                <select
+                  value={form.status}
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, status: e.target.value }))
+                  }
+                  className="input-field"
+                >
+                  {STATUS_OPTIONS.map((s) => (
+                    <option key={s} value={s}>
+                      {s}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Check-in / Check-out */}
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="label-text">Check In</label>
+                  <input
+                    type="time"
+                    value={form.checkIn}
+                    onChange={(e) =>
+                      setForm((f) => ({ ...f, checkIn: e.target.value }))
+                    }
+                    className="input-field"
+                  />
+                </div>
+                <div>
+                  <label className="label-text">Check Out</label>
+                  <input
+                    type="time"
+                    value={form.checkOut}
+                    onChange={(e) =>
+                      setForm((f) => ({ ...f, checkOut: e.target.value }))
+                    }
+                    className="input-field"
+                  />
+                </div>
+              </div>
+
+              {/* Note */}
+              <div>
+                <label className="label-text">
+                  Note <span className="text-surface-400">(optional)</span>
+                </label>
+                <textarea
+                  value={form.note}
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, note: e.target.value }))
+                  }
+                  rows={2}
+                  maxLength={500}
+                  placeholder="Reason, correction note, etc."
+                  className="input-field resize-none"
+                />
+              </div>
+
+              <div className="flex gap-3 pt-1">
                 <button
                   type="button"
-                  onClick={() => setPunchModal(false)}
-                  className="btn-secondary"
+                  onClick={() => setShowForm(false)}
+                  className="btn-secondary flex-1 justify-center text-sm"
+                  disabled={saving}
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  disabled={
-                    punchSubmitting || (!editingLog && !punchForm.employeeId)
-                  }
-                  className="btn-primary"
+                  className="btn-primary flex-1 justify-center text-sm"
+                  disabled={saving}
                 >
-                  {punchSubmitting
-                    ? "Saving…"
-                    : editingLog
-                      ? "Update"
-                      : "Add Punch"}
+                  {saving ? (
+                    <>
+                      <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+                      Saving…
+                    </>
+                  ) : editRecord ? (
+                    "Save Changes"
+                  ) : (
+                    "Create Record"
+                  )}
                 </button>
               </div>
             </form>
@@ -1832,604 +1840,93 @@ function HRAttendancePage() {
         </div>
       )}
 
-      {/* ═══════════════ MONTHLY ATTENDANCE IMPORT MODAL ═══════════════ */}
-      {monthlyModal && (
-        <div
-          className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4"
-          onClick={() => setMonthlyModal(false)}
-        >
-          <div
-            className="bg-white rounded-[28px] w-full max-w-lg shadow-xl overflow-hidden"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <ModalHeader
-              title="Monthly Attendance Import"
-              description="Upload the monthly In/Out report (Albos format)"
-              onClose={() => setMonthlyModal(false)}
-              gradient="from-indigo-600 to-violet-700"
-            />
-
-            <div className="p-6 space-y-4">
-              {/* Info box */}
-              <div className="bg-violet-50 border border-violet-200 rounded-xl p-4 text-xs text-violet-700 space-y-1">
-                <p className="font-semibold text-violet-800 mb-1">
-                  Supported format:
-                </p>
-                <p>
-                  • Header row:{" "}
-                  <span className="font-mono">
-                    Emp Code | Emp Name | 1 | 2 | … | 31
-                  </span>
-                </p>
-                <p>
-                  • Two rows per employee: check-in times row + check-out times
-                  row
-                </p>
-                <p>
-                  • Special values: <span className="font-mono">WO-I</span>{" "}
-                  (Week Off) · <span className="font-mono">A</span> (Absent) are
-                  skipped
-                </p>
-              </div>
-
-              {/* Month + Year selector */}
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-surface-500">
-                    Month
-                  </label>
-                  <select
-                    value={monthlyMonth}
-                    onChange={(e) => setMonthlyMonth(Number(e.target.value))}
-                    className="input-field"
-                  >
-                    {[
-                      "January",
-                      "February",
-                      "March",
-                      "April",
-                      "May",
-                      "June",
-                      "July",
-                      "August",
-                      "September",
-                      "October",
-                      "November",
-                      "December",
-                    ].map((m, i) => (
-                      <option key={m} value={i + 1}>
-                        {m}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-surface-500">
-                    Year
-                  </label>
-                  <select
-                    value={monthlyYear}
-                    onChange={(e) => setMonthlyYear(Number(e.target.value))}
-                    className="input-field"
-                  >
-                    {Array.from(
-                      { length: 5 },
-                      (_, i) => new Date().getFullYear() - 2 + i,
-                    ).map((y) => (
-                      <option key={y} value={y}>
-                        {y}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
-              {/* Drop zone */}
-              <div
-                className="border-2 border-dashed border-purple-200 rounded-xl p-8 text-center cursor-pointer hover:border-purple-400 hover:bg-purple-50/30 transition-all"
-                onClick={() => monthlyFileRef.current?.click()}
-              >
-                <input
-                  ref={monthlyFileRef}
-                  type="file"
-                  accept=".xls,.xlsx"
-                  className="hidden"
-                  onChange={(e) => {
-                    setMonthlyFile(e.target.files[0]);
-                    setMonthlyResult(null);
-                  }}
-                />
-                {monthlyFile ? (
-                  <div className="flex items-center justify-center gap-3">
-                    <FileText className="w-6 h-6 text-purple-600" />
-                    <div className="text-left">
-                      <p className="text-sm font-semibold text-gray-900">
-                        {monthlyFile.name}
-                      </p>
-                      <p className="text-xs text-surface-400">
-                        {(monthlyFile.size / 1024).toFixed(1)} KB — click to
-                        change
-                      </p>
-                    </div>
-                  </div>
-                ) : (
-                  <>
-                    <Upload className="w-8 h-8 text-surface-300 mx-auto mb-2" />
-                    <p className="text-sm text-surface-400">
-                      Click to select file
-                    </p>
-                    <p className="text-xs text-surface-300 mt-1">
-                      XLS · XLSX · Max 10 MB
-                    </p>
-                  </>
-                )}
-              </div>
-
-              {/* Result */}
-              {monthlyResult && (
-                <div
-                  className={`rounded-xl p-4 border ${monthlyResult.inserted > 0 ? "bg-green-50 border-green-200" : "bg-amber-50 border-amber-200"}`}
-                >
-                  <p className="font-semibold text-sm text-gray-900 mb-3">
-                    {monthlyResult.message}
-                  </p>
-                  <div className="grid grid-cols-3 gap-3 text-center mb-3">
-                    {[
-                      ["Inserted", monthlyResult.inserted, "text-green-700"],
-                      ["Skipped", monthlyResult.skipped, "text-amber-700"],
-                      ["Unmapped", monthlyResult.unmapped, "text-red-700"],
-                    ].map(([l, v, c]) => (
-                      <div key={l}>
-                        <p className={`text-xl font-bold ${c}`}>{v}</p>
-                        <p className="text-xs text-surface-500">{l}</p>
-                      </div>
-                    ))}
-                  </div>
-                  {monthlyResult.unmappedIds?.length > 0 && (
-                    <p className="text-xs text-amber-700 flex gap-2 items-start">
-                      <AlertCircle className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
-                      <span>
-                        Unmapped Emp Codes:{" "}
-                        <span className="font-mono">
-                          {monthlyResult.unmappedIds.join(", ")}
-                        </span>{" "}
-                        — set Card No / Fingerprint ID in Employees
-                      </span>
-                    </p>
-                  )}
-                  {monthlyResult.errors?.length > 0 && (
-                    <details className="mt-2">
-                      <summary className="text-xs text-red-600 cursor-pointer">
-                        Show errors ({monthlyResult.errors.length})
-                      </summary>
-                      <ul className="mt-1 space-y-0.5">
-                        {monthlyResult.errors.map((e, i) => (
-                          <li
-                            key={i}
-                            className="text-xs text-red-600 font-mono"
-                          >
-                            {e}
-                          </li>
-                        ))}
-                      </ul>
-                    </details>
-                  )}
-                </div>
-              )}
-
-              <div className="flex gap-3 justify-end">
-                <button
-                  onClick={() => setMonthlyModal(false)}
-                  className="btn-secondary text-sm"
-                >
-                  Close
-                </button>
-                <button
-                  onClick={handleMonthlyImport}
-                  disabled={!monthlyFile || monthlyImporting}
-                  className="btn-primary text-sm"
-                >
-                  <Upload className="w-4 h-4" />
-                  {monthlyImporting ? "Importing…" : "Import Monthly"}
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ═══════════════ DAILY DETAILED XLS IMPORT MODAL ═══════════════ */}
-      {dailyModal && (
-        <div
-          className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4"
-          onClick={() => setDailyModal(false)}
-        >
-          <div
-            className="bg-white rounded-[28px] w-full max-w-lg shadow-xl overflow-hidden"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <ModalHeader
-              title="Daily Attendance Import"
-              description="Upload the Date wise Daily Attendance Report (Detailed) XLS"
-              onClose={() => setDailyModal(false)}
-              gradient="from-fuchsia-600 to-purple-700"
-            />
-
-            <div className="p-6 space-y-4">
-              <div className="bg-fuchsia-50 border border-fuchsia-200 rounded-xl p-4 text-xs text-fuchsia-700 space-y-1">
-                <p className="font-semibold text-fuchsia-800 mb-1">
-                  Supported format:
-                </p>
-                <p>
-                  • Header row:{" "}
-                  <span className="font-mono">
-                    EMP Code · Card No · Emp Name · In Time · Out Time · Status
-                  </span>
-                </p>
-                <p>
-                  • Report date is read from the{" "}
-                  <span className="font-mono">Date : DD/MM/YYYY</span> metadata
-                  cell
-                </p>
-                <p>
-                  • Status: <span className="font-mono">P</span> present ·{" "}
-                  <span className="font-mono">MIS</span> missing punch ·{" "}
-                  <span className="font-mono">A</span> absent ·{" "}
-                  <span className="font-mono">WO</span> skipped
-                </p>
-              </div>
-
-              <div
-                className={`border-2 border-dashed rounded-xl p-8 text-center cursor-pointer transition-all ${
-                  dailyDragOver
-                    ? "border-fuchsia-500 bg-fuchsia-50/60"
-                    : "border-purple-200 hover:border-purple-400 hover:bg-purple-50/30"
-                }`}
-                onClick={() => dailyFileRef.current?.click()}
-                onDragOver={(e) => {
-                  e.preventDefault();
-                  setDailyDragOver(true);
-                }}
-                onDragLeave={() => setDailyDragOver(false)}
-                onDrop={(e) => {
-                  e.preventDefault();
-                  setDailyDragOver(false);
-                  acceptDailyFile(e.dataTransfer.files?.[0]);
-                }}
-              >
-                <input
-                  ref={dailyFileRef}
-                  type="file"
-                  accept=".xls,.xlsx"
-                  className="hidden"
-                  onChange={(e) => acceptDailyFile(e.target.files?.[0])}
-                />
-                {dailyFile ? (
-                  <div className="flex items-center justify-center gap-3">
-                    <FileText className="w-6 h-6 text-fuchsia-600" />
-                    <div className="text-left">
-                      <p className="text-sm font-semibold text-gray-900">
-                        {dailyFile.name}
-                      </p>
-                      <p className="text-xs text-surface-400">
-                        {(dailyFile.size / 1024).toFixed(1)} KB — click to
-                        change
-                      </p>
-                    </div>
-                  </div>
-                ) : (
-                  <>
-                    <Upload className="w-8 h-8 text-surface-300 mx-auto mb-2" />
-                    <p className="text-sm text-surface-400">
-                      Click or drop the XLS here
-                    </p>
-                    <p className="text-xs text-surface-300 mt-1">
-                      XLS · XLSX · Max 10 MB
-                    </p>
-                  </>
-                )}
-              </div>
-
-              {dailyResult && (
-                <div
-                  className={`rounded-xl p-4 border ${dailyResult.inserted > 0 ? "bg-green-50 border-green-200" : "bg-amber-50 border-amber-200"}`}
-                >
-                  <p className="font-semibold text-sm text-gray-900 mb-3">
-                    {dailyResult.message}
-                  </p>
-                  <div className="grid grid-cols-3 gap-3 text-center mb-3">
-                    {[
-                      ["Inserted", dailyResult.inserted, "text-green-700"],
-                      ["Skipped", dailyResult.skipped, "text-amber-700"],
-                      ["Unmapped", dailyResult.unmapped, "text-red-700"],
-                    ].map(([l, v, c]) => (
-                      <div key={l}>
-                        <p className={`text-xl font-bold ${c}`}>{v}</p>
-                        <p className="text-xs text-surface-500">{l}</p>
-                      </div>
-                    ))}
-                  </div>
-                  {dailyResult.unmappedIds?.length > 0 && (
-                    <p className="text-xs text-amber-700 flex gap-2 items-start">
-                      <AlertCircle className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
-                      <span>
-                        Unmapped Emp Codes / Cards:{" "}
-                        <span className="font-mono">
-                          {dailyResult.unmappedIds.join(", ")}
-                        </span>{" "}
-                        — set Card No / Fingerprint ID in Employees
-                      </span>
-                    </p>
-                  )}
-                  {dailyResult.errors?.length > 0 && (
-                    <details className="mt-2">
-                      <summary className="text-xs text-red-600 cursor-pointer">
-                        Show errors ({dailyResult.errors.length})
-                      </summary>
-                      <ul className="mt-1 space-y-0.5">
-                        {dailyResult.errors.map((e, i) => (
-                          <li
-                            key={i}
-                            className="text-xs text-red-600 font-mono"
-                          >
-                            {e}
-                          </li>
-                        ))}
-                      </ul>
-                    </details>
-                  )}
-                </div>
-              )}
-
-              <div className="flex gap-3 justify-end">
-                <button
-                  onClick={() => setDailyModal(false)}
-                  className="btn-secondary text-sm"
-                >
-                  Close
-                </button>
-                <button
-                  onClick={handleDailyImport}
-                  disabled={!dailyFile || dailyImporting}
-                  className="btn-primary text-sm"
-                >
-                  <Upload className="w-4 h-4" />
-                  {dailyImporting ? "Importing…" : "Import Daily"}
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ═══════════════ CSV IMPORT MODAL ═══════════════ */}
-      {importModal && (
-        <div
-          className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4"
-          onClick={() => setImportModal(false)}
-        >
-          <div
-            className="bg-white rounded-[28px] w-full max-w-lg shadow-xl overflow-hidden"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <ModalHeader
-              title="Import Attendance CSV"
-              description="Export from Secureye and upload here"
-              onClose={() => setImportModal(false)}
-              gradient="from-cyan-600 to-blue-700"
-            />
-
-            <div className="p-6 space-y-4">
-              <div className="bg-cyan-50 border border-cyan-200 rounded-xl p-4 text-xs text-cyan-700 space-y-1">
-                <p className="font-semibold text-cyan-800 mb-1">
-                  Export steps from Secureye:
-                </p>
-                <p>1. Reports → Punch Report → set date range</p>
-                <p>2. Export as CSV / Excel</p>
-                <p>3. Upload the file below</p>
-                <p className="text-cyan-600 mt-2">
-                  Columns auto-detected: Emp Code · Date · Time · Direction
-                </p>
-              </div>
-
-              {/* Drop zone */}
-              <div
-                className="border-2 border-dashed border-blue-200 rounded-xl p-8 text-center cursor-pointer hover:border-blue-400 hover:bg-blue-50/30 transition-all"
-                onClick={() => fileRef.current?.click()}
-              >
-                <input
-                  ref={fileRef}
-                  type="file"
-                  accept=".csv,.txt,.xls,.xlsx"
-                  className="hidden"
-                  onChange={(e) => {
-                    setImportFile(e.target.files[0]);
-                    setImportResult(null);
-                  }}
-                />
-                {importFile ? (
-                  <div className="flex items-center justify-center gap-3">
-                    <FileText className="w-6 h-6 text-blue-600" />
-                    <div className="text-left">
-                      <p className="text-sm font-semibold text-gray-900">
-                        {importFile.name}
-                      </p>
-                      <p className="text-xs text-surface-400">
-                        {(importFile.size / 1024).toFixed(1)} KB — click to
-                        change
-                      </p>
-                    </div>
-                  </div>
-                ) : (
-                  <>
-                    <Upload className="w-8 h-8 text-surface-300 mx-auto mb-2" />
-                    <p className="text-sm text-surface-400">
-                      Click to select file
-                    </p>
-                    <p className="text-xs text-surface-300 mt-1">
-                      CSV · XLSX · Max 10 MB
-                    </p>
-                  </>
-                )}
-              </div>
-
-              {/* Import result */}
-              {importResult && (
-                <div
-                  className={`rounded-xl p-4 border ${importResult.inserted > 0 ? "bg-green-50 border-green-200" : "bg-amber-50 border-amber-200"}`}
-                >
-                  <p className="font-semibold text-sm text-gray-900 mb-3">
-                    {importResult.message}
-                  </p>
-                  <div className="grid grid-cols-3 gap-3 text-center mb-3">
-                    {[
-                      ["Inserted", importResult.inserted, "text-green-700"],
-                      ["Skipped", importResult.skipped, "text-amber-700"],
-                      ["Unmapped", importResult.unmapped, "text-red-700"],
-                    ].map(([l, v, c]) => (
-                      <div key={l}>
-                        <p className={`text-xl font-bold ${c}`}>{v}</p>
-                        <p className="text-xs text-surface-500">{l}</p>
-                      </div>
-                    ))}
-                  </div>
-                  {importResult.unmappedIds?.length > 0 && (
-                    <p className="text-xs text-amber-700 flex gap-2">
-                      <AlertCircle className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
-                      Unmapped Emp Codes: {importResult.unmappedIds.join(", ")}{" "}
-                      — set Fingerprint ID in Employees
-                    </p>
-                  )}
-                </div>
-              )}
-
-              <div className="flex gap-3 justify-end">
-                <button
-                  onClick={() => setImportModal(false)}
-                  className="btn-secondary text-sm"
-                >
-                  Close
-                </button>
-                <button
-                  onClick={handleImport}
-                  disabled={!importFile || importing}
-                  className="btn-primary text-sm"
-                >
-                  <Upload className="w-4 h-4" />
-                  {importing ? "Importing…" : "Import"}
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ═══════════════ DELETE CONFIRM ═══════════════ */}
+      {/* ════════════════════════════════════════════════════════════════════════
+          DELETE CONFIRM MODAL
+      ════════════════════════════════════════════════════════════════════════ */}
       {deleteId && (
-        <div
-          className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4"
-          onClick={() => setDeleteId(null)}
-        >
-          <div
-            className="bg-white rounded-[28px] w-full max-w-sm shadow-xl overflow-hidden"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="relative overflow-hidden rounded-t-[28px] bg-gradient-to-br from-red-500 to-rose-600 px-6 py-5">
-              <div className="pointer-events-none absolute -right-6 -top-6 h-24 w-24 rounded-full bg-white/10" />
-              <div className="relative z-10 flex items-start justify-between gap-4">
-                <div>
-                  <h3 className="font-display text-xl font-bold text-white">
-                    Delete this record?
-                  </h3>
-                  <p className="mt-1 text-sm text-white/70">
-                    This action cannot be undone.
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setDeleteId(null)}
-                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white/15 text-white transition hover:bg-white/25"
-                >
-                  <X className="h-4 w-4" />
-                </button>
-              </div>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-sm rounded-3xl bg-white p-6 shadow-2xl">
+            <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-red-100">
+              <Trash2 className="h-5 w-5 text-red-600" />
             </div>
-            <div className="p-6">
-              <p className="text-sm text-surface-400 mb-6">
-                This punch entry will be permanently removed and cannot be
-                undone.
-              </p>
-              <div className="flex gap-3 justify-end">
-                <button
-                  onClick={() => setDeleteId(null)}
-                  className="btn-secondary text-sm"
-                >
-                  Cancel
-                </button>
-                <button onClick={handleDelete} className="btn-danger text-sm">
-                  Delete
-                </button>
-              </div>
+            <h3 className="font-display text-lg font-bold text-gray-900">
+              Delete Record?
+            </h3>
+            <p className="mt-1 text-sm text-surface-400">
+              This attendance record will be permanently removed. This action
+              cannot be undone.
+            </p>
+            <div className="mt-5 flex gap-3">
+              <button
+                type="button"
+                onClick={() => setDeleteId("")}
+                className="btn-secondary flex-1 justify-center text-sm"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleDelete}
+                className="flex-1 rounded-2xl bg-red-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2"
+              >
+                Delete
+              </button>
             </div>
           </div>
         </div>
       )}
-
-      {/* ═══════════════ REVIEW CORRECTION REQUEST MODAL ═══════════════ */}
-      {reviewModal && (
-        <div
-          className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4"
-          onClick={() => setReviewModal(null)}
-        >
-          <div
-            className="bg-white rounded-[28px] w-full max-w-md shadow-xl overflow-hidden"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <ModalHeader
-              title={
-                reviewModal.action === "approve"
-                  ? "Approve Request"
-                  : "Reject Request"
-              }
-              description={`${reviewModal.req.employeeId?.name} · ${fmtDate(reviewModal.req.date)}`}
-              onClose={() => setReviewModal(null)}
-              gradient={
-                reviewModal.action === "approve"
-                  ? "from-emerald-600 to-teal-700"
-                  : "from-red-500 to-rose-600"
-              }
-            />
-
-            <form onSubmit={handleReview} className="p-6 space-y-4">
-              {/* Summary */}
-              <div className="rounded-xl bg-purple-50/60 border border-purple-100 p-4 space-y-1.5 text-sm text-gray-700">
-                {reviewModal.req.requestedCheckIn && (
+      {/* ── HR Review Modal ─────────────────────────────────────────────── */}
+      {reviewingRequest && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm">
+          <div className="relative w-full max-w-md rounded-3xl bg-white shadow-2xl">
+            <div className="flex items-center justify-between border-b border-surface-200 px-6 py-5">
+              <div>
+                <h2 className="font-display text-xl font-bold text-gray-900">
+                  {reviewingRequest.action === "approve"
+                    ? "Approve Request"
+                    : "Reject Request"}
+                </h2>
+                <p className="mt-0.5 text-sm text-surface-400">
+                  {reviewingRequest.req.employeeId?.name} ·{" "}
+                  {formatDate(reviewingRequest.req.date)}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setReviewingRequest(null)}
+                disabled={reviewSaving}
+                className="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-surface-200 text-surface-500 transition hover:bg-surface-50 disabled:opacity-40"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <form onSubmit={handleReview} className="space-y-4 px-6 py-5">
+              {/* Request summary */}
+              <div className="rounded-2xl bg-surface-50 p-4 space-y-1 text-sm text-gray-700">
+                {reviewingRequest.req.requestedCheckIn && (
                   <p>
                     Requested Check In:{" "}
                     <span className="font-semibold">
-                      {reviewModal.req.requestedCheckIn}
+                      {reviewingRequest.req.requestedCheckIn}
                     </span>
                   </p>
                 )}
-                {reviewModal.req.requestedCheckOut && (
+                {reviewingRequest.req.requestedCheckOut && (
                   <p>
                     Requested Check Out:{" "}
                     <span className="font-semibold">
-                      {reviewModal.req.requestedCheckOut}
+                      {reviewingRequest.req.requestedCheckOut}
                     </span>
                   </p>
                 )}
                 <p className="text-surface-400">
-                  Reason: {reviewModal.req.reason}
+                  Reason: {reviewingRequest.req.reason}
                 </p>
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-surface-500 uppercase tracking-wider mb-1.5">
-                  Comment{" "}
-                  <span className="text-surface-300 normal-case font-normal">
-                    (optional)
-                  </span>
+                <label className="mb-1 block text-xs font-medium text-surface-500">
+                  Comment (optional)
                 </label>
                 <textarea
                   rows={3}
@@ -2444,7 +1941,7 @@ function HRAttendancePage() {
               <div className="flex gap-3">
                 <button
                   type="button"
-                  onClick={() => setReviewModal(null)}
+                  onClick={() => setReviewingRequest(null)}
                   disabled={reviewSaving}
                   className="btn-secondary flex-1 text-sm"
                 >
@@ -2453,17 +1950,197 @@ function HRAttendancePage() {
                 <button
                   type="submit"
                   disabled={reviewSaving}
-                  className={`flex-1 rounded-2xl px-4 py-2.5 text-sm font-semibold text-white transition disabled:opacity-50 ${
-                    reviewModal.action === "approve"
-                      ? "bg-emerald-600 hover:bg-emerald-700"
-                      : "bg-red-600 hover:bg-red-700"
+                  className={`flex-1 rounded-2xl px-4 py-2.5 text-sm font-semibold text-white transition focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-50 ${
+                    reviewingRequest.action === "approve"
+                      ? "bg-green-600 hover:bg-green-700 focus:ring-green-500"
+                      : "bg-red-600 hover:bg-red-700 focus:ring-red-500"
                   }`}
                 >
                   {reviewSaving
                     ? "Saving…"
-                    : reviewModal.action === "approve"
+                    : reviewingRequest.action === "approve"
                       ? "Confirm Approve"
                       : "Confirm Reject"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ════════════════════════════════════════════════════════════════════════
+          EMPLOYEE REQUEST MODAL  (Request Present / Apply Leave)
+      ════════════════════════════════════════════════════════════════════════ */}
+      {requestModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm">
+          <div className="relative w-full max-w-md rounded-3xl bg-white shadow-2xl">
+            <div className="flex items-center justify-between border-b border-surface-200 px-6 py-5">
+              <div>
+                <h2 className="font-display text-xl font-bold text-gray-900">
+                  {requestModal.mode === "present"
+                    ? "Regularize Attendance"
+                    : "Apply for Leave"}
+                </h2>
+                <p className="mt-0.5 text-sm text-surface-400">
+                  {requestForm.date
+                    ? formatDate(requestForm.date)
+                    : "Choose a date below"}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setRequestModal(null)}
+                disabled={requestSaving}
+                className="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-surface-200 text-surface-500 transition hover:bg-surface-50 disabled:opacity-40"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <form onSubmit={submitRequest} className="space-y-4 px-6 py-5">
+              {requestModal.mode === "present" ? (
+                <>
+                  <p className="rounded-2xl bg-green-50 border border-green-100 p-3 text-xs text-green-700">
+                    Ask HR to mark you present on this date (within the last{" "}
+                    {REGULARIZATION_WINDOW_DAYS} days). Pick a reason and,
+                    optionally, the times you worked.
+                  </p>
+                  {requestModal.dateEditable && (
+                    <div>
+                      <label className="label-text">Date</label>
+                      <input
+                        type="date"
+                        value={requestForm.date}
+                        min={regularizationMinDate}
+                        max={todayIso}
+                        onChange={(e) =>
+                          setRequestForm((f) => ({ ...f, date: e.target.value }))
+                        }
+                        required
+                        className="input-field"
+                      />
+                    </div>
+                  )}
+                  <div>
+                    <label className="label-text">Reason Type</label>
+                    <select
+                      value={requestForm.category}
+                      onChange={(e) =>
+                        setRequestForm((f) => ({
+                          ...f,
+                          category: e.target.value,
+                        }))
+                      }
+                      className="input-field"
+                    >
+                      {REGULARIZATION_CATEGORIES.map((c) => (
+                        <option key={c.value} value={c.value}>
+                          {c.label}
+                        </option>
+                      ))}
+                    </select>
+                    <p className="mt-1.5 text-xs text-surface-400">
+                      If approved, this day will be marked as{" "}
+                      <span className="font-semibold text-gray-700">
+                        {getRegularizationOutcomeLabel(requestForm.category)}
+                      </span>
+                      .
+                    </p>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="label-text">
+                        Check In{" "}
+                        <span className="text-surface-400">(optional)</span>
+                      </label>
+                      <input
+                        type="time"
+                        value={requestForm.checkIn}
+                        onChange={(e) =>
+                          setRequestForm((f) => ({
+                            ...f,
+                            checkIn: e.target.value,
+                          }))
+                        }
+                        className="input-field"
+                      />
+                    </div>
+                    <div>
+                      <label className="label-text">
+                        Check Out{" "}
+                        <span className="text-surface-400">(optional)</span>
+                      </label>
+                      <input
+                        type="time"
+                        value={requestForm.checkOut}
+                        onChange={(e) =>
+                          setRequestForm((f) => ({
+                            ...f,
+                            checkOut: e.target.value,
+                          }))
+                        }
+                        className="input-field"
+                      />
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <p className="rounded-2xl bg-blue-50 border border-blue-100 p-3 text-xs text-blue-700">
+                    This applies for leave on this date. HR will review and
+                    approve it against your leave balance.
+                  </p>
+                  <div>
+                    <label className="label-text">Leave Type</label>
+                    <select
+                      value={requestForm.leaveType}
+                      onChange={(e) =>
+                        setRequestForm((f) => ({
+                          ...f,
+                          leaveType: e.target.value,
+                        }))
+                      }
+                      className="input-field"
+                    >
+                      <option value="full">Full Day</option>
+                      <option value="half">Half Day</option>
+                      <option value="sick">Sick Leave</option>
+                      <option value="casual">Casual Leave</option>
+                    </select>
+                  </div>
+                </>
+              )}
+
+              <div>
+                <label className="label-text">Reason</label>
+                <textarea
+                  value={requestForm.reason}
+                  onChange={(e) =>
+                    setRequestForm((f) => ({ ...f, reason: e.target.value }))
+                  }
+                  rows={3}
+                  maxLength={500}
+                  required
+                  placeholder="Briefly explain your request…"
+                  className="input-field resize-none"
+                />
+              </div>
+
+              <div className="flex gap-3 pt-1">
+                <button
+                  type="button"
+                  onClick={() => setRequestModal(null)}
+                  disabled={requestSaving}
+                  className="btn-secondary flex-1 justify-center text-sm"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={requestSaving}
+                  className="btn-primary flex-1 justify-center text-sm disabled:opacity-50"
+                >
+                  {requestSaving ? "Submitting…" : "Submit Request"}
                 </button>
               </div>
             </form>
